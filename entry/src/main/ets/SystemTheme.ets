@@ -16,5 +16,5 @@ export function systemThemeFromColorMode(colorMode: number | undefined): string 
 }
 
 export function publishSystemTheme(theme: string): void {
-  AppStorage.setOrCreate('gridcraftSystemTheme', theme);
+  AppStorage.setOrCreate('texturecraftSystemTheme', theme);
 }

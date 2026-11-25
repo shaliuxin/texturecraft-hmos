@@ -8,7 +8,7 @@ SDKLLVM="$DEVECO/sdk/default/openharmony/native/llvm/bin"
 HDC="$DEVECO/sdk/default/openharmony/toolchains/hdc.exe"
 SDK_USER="${OHOS_SDK_USER:-/c/Users/mingh/AppData/Local/Huawei/Sdk}"
 TARGET="${OHOS_TARGET:-aarch64-unknown-linux-ohos}"
-BUNDLE="${GC_BUNDLE:-io.github.shaliuxin.gridcraft.hmos}"
+BUNDLE="${TC_BUNDLE:-io.github.shaliuxin.texturecraft.hmos}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 DEVICE="${1:-}"
@@ -42,6 +42,13 @@ export CXX_aarch64_unknown_linux_ohos="$SDKLLVM/clang++.exe"
 export CXX_x86_64_unknown_linux_ohos="$SDKLLVM/clang++.exe"
 export CXXFLAGS_aarch64_unknown_linux_ohos="-target aarch64-linux-ohos --sysroot=$OHOS_SYSROOT -D__MUSL__"
 export CXXFLAGS_x86_64_unknown_linux_ohos="-target x86_64-linux-ohos --sysroot=$OHOS_SYSROOT -D__MUSL__"
+# i18n catalog（与 build_native.sh 一致）：不设置 CRAFT_I18N_DIR 则 catalog 为空、UI 全英文，
+# 且 cargo 的 rerun-if-env-changed 会把上一次带 catalog 的产物覆盖成空 catalog。
+if [ -f "$ROOT/scripts/gen_i18n_tsv.py" ]; then
+  python3 "$ROOT/scripts/gen_i18n_tsv.py"
+  export CRAFT_I18N_DIR="$ROOT"
+  export CRAFT_I18N_REQUIRED=1
+fi
 cargo build --release --target "$TARGET" 2>&1 | tail -8
 [ "${PIPESTATUS[0]}" -eq 0 ] || { echo "cargo build failed"; exit 1; }
 

@@ -10,6 +10,9 @@ use std::sync::{
 /// ArkTS 侧的通知回调：`(id, kind, text, data)`。C++ 边界会在返回前拷贝两块借用的切片。
 pub type Notify = extern "C" fn(u64, *const u8, usize, *const u8, usize);
 static NOTIFY: OnceLock<Notify> = OnceLock::new();
+// 请求/应答通道（v1 暂未接线：开文件走 `app.run("file.open")`，文件由 ArkTS 直接传入）。
+// 保留 `request`/`NEXT` 作为 v2 的「向 ArkTS 拉文件/服务」通路，故标 `dead_code`。
+#[allow(dead_code)]
 static NEXT: AtomicU64 = AtomicU64::new(1);
 static CANCELLED: AtomicBool = AtomicBool::new(false);
 static PENDING: OnceLock<Mutex<HashMap<u64, mpsc::Sender<Reply>>>> = OnceLock::new();
@@ -41,6 +44,8 @@ pub fn notify(id: u64, kind: &str, text: &str, data: &[u8]) {
 }
 
 /// 同步请求：登记应答通道 → 通知平台 → 阻塞等待 ArkTS 回包。返回文件名与字节。
+/// v1 未接线（见上 `NEXT` 注释），保留为 v2 通路，故标 `dead_code`。
+#[allow(dead_code)]
 pub fn request(kind: &str, text: &str, data: &[u8]) -> Reply {
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = mpsc::channel();

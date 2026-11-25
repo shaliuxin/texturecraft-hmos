@@ -1,0 +1,32 @@
+[package]
+name = "egui-winit"
+# Must match the egui fork version (0.37.0) so the adapter's
+# `[patch.crates-io]` can override the git fork for the OHOS target.
+version = "0.37.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# The real `egui-winit` is deeply winit-coupled (event translation, clipboard,
+# IME, viewport command processing) and cannot compile without a winit backend.
+# On OHOS the native side owns the event loop and rendering, and eframe's
+# always-compiled code references NO `egui_winit` symbols once eframe's `native`
+# module is gated off, so this stub compiles to nothing while still declaring the
+# feature names eframe's feature graph expects to resolve.
+
+[lib]
+name = "egui_winit"
+
+[features]
+default = []
+# Feature names referenced from eframe's feature graph; all no-ops on OHOS.
+accesskit = []
+android-game-activity = []
+android-native-activity = []
+bytemuck = []
+clipboard = []
+clipboard-image = []
+links = []
+serde = []
+wayland = []
+x11 = []

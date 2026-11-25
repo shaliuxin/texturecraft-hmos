@@ -1,4 +1,4 @@
-import native from 'libgridcraft.so';
+import native from 'libtexturecraft.so';
 import { common } from '@kit.AbilityKit';
 import { fileIo, fileUri, picker } from '@kit.CoreFileKit';
 import { i18n } from '@kit.LocalizationKit';
@@ -54,7 +54,7 @@ function systemLocaleTag(): string {
 
 /**
  * 对文件名或 file:// URI 里的百分号（%xx）解码，得到真实可读名（如 文档1）。
- * gridcraft 用回传路径的末段（file_stem）作文档标题，若不先解码，标题/信息页/最近列表
+ * texturecraft 用回传路径的末段（file_stem）作文档标题，若不先解码，标题/信息页/最近列表
  * 会显示原始百分号串（%E6%96%87…）。
  * - 含 `://`（完整 URI）：只解码各路径段，保留 scheme 与分隔符。
  * - 其余（裸文件名）：整体解码。
@@ -103,7 +103,7 @@ struct Index {
   @State private deviceScale: number = 1;
   // 系统「打开方式」：EntryAbility 把 want.uri 写进 AppStorage。应用已在前台时页面不会重新
   // aboutToAppear，必须用 @StorageLink/@Watch 监听变化并立即消费，否则文件永远打不开。
-  @StorageLink('gridcraftOpenWant') @Watch('onOpenWantChanged') private openWantUri: string = '';
+  @StorageLink('texturecraftOpenWant') @Watch('onOpenWantChanged') private openWantUri: string = '';
   // 中文输入法（与 DeckCraft / WordCraft 同一修法）：attach 前必须有一个获焦的 ArkUI
   // 编辑组件（XComponent 原生表面不算），监听器必须在 attach 成功之后注册（否则 12800009）。
   private imeController: inputMethod.InputMethodController | undefined = undefined;
@@ -114,7 +114,7 @@ struct Index {
   private imeWanted: boolean = false;
 
   aboutToAppear(): void {
-    console.info('GridCraft native page appearing');
+    console.info('TextureCraft native page appearing');
     this.alive = true;
     this.generation++;
     this.initializeHost(this.generation);
@@ -136,7 +136,7 @@ struct Index {
     try {
       let scale: number = this.getUIContext().vp2px(1);
       this.deviceScale = scale;
-      let systemTheme = AppStorage.get<string>('gridcraftSystemTheme') ?? '';
+      let systemTheme = AppStorage.get<string>('texturecraftSystemTheme') ?? '';
       if (systemTheme !== SYSTEM_THEME_DARK && systemTheme !== SYSTEM_THEME_LIGHT) {
         systemTheme = '';
       }
@@ -178,16 +178,16 @@ struct Index {
         bytes = this.readAll(file.fd);
         fileIo.closeSync(file);
       } catch (uriErr) {
-        console.warn(`GridCraft open want: URI open failed (${(uriErr as Error).message}); trying path`);
+        console.warn(`TextureCraft open want: URI open failed (${(uriErr as Error).message}); trying path`);
         const file = fileIo.openSync(percentDecodeName(path), fileIo.OpenMode.READ_ONLY);
         bytes = this.readAll(file.fd);
         fileIo.closeSync(file);
       }
       native.open(name, bytes);
-      console.info(`GridCraft open want: ${name} (${bytes.byteLength} bytes)`);
+      console.info(`TextureCraft open want: ${name} (${bytes.byteLength} bytes)`);
     } catch (error) {
       const err = error as Error;
-      console.error(`GridCraft open want failed: ${err.message}\n${err.stack ?? ''}`);
+      console.error(`TextureCraft open want failed: ${err.message}\n${err.stack ?? ''}`);
     }
   }
 
@@ -213,7 +213,7 @@ struct Index {
 
   private receive(id: number, message: string, data: ArrayBuffer): void {
     const request = JSON.parse(message) as NativeMessage;
-    console.info(`GridCraft native ${request.kind}: ${request.text}`);
+    console.info(`TextureCraft native ${request.kind}: ${request.text}`);
     if (!this.alive) {
       if (id > 0) { native.reply(id, false, 'cancelled', new ArrayBuffer(0)); }
       return;
@@ -226,7 +226,7 @@ struct Index {
     } else if (request.kind === 'close') {
       // Rust 的关闭验证已通过（用户点了 Save / Don't Save，或无未保存改动）。
       // terminateSelf 属于「其它关闭方式」，不会再触发 windowWillClose，避免重复拦截。
-      console.info('GridCraft native close confirmed: terminating ability');
+      console.info('TextureCraft native close confirmed: terminating ability');
       this.context.terminateSelf();
     } else if (request.kind === 'url') {
       this.context.startAbility({ action: 'ohos.want.action.viewData', uri: request.text })
@@ -234,7 +234,7 @@ struct Index {
     } else if (request.kind === 'open' || request.kind === 'file') {
       this.pickDocument(id, false);
     } else if (request.kind === 'download') {
-      // GridCraft 没有 host_save：另存为 / PDF 导出把文件字节交给宿主（见 Rust services()）。
+      // TextureCraft 没有 host_save：另存为 / PDF 导出把文件字节交给宿主（见 Rust services()）。
       // 宿主先弹保存选择器拿到 picker 授权 URI，再用 fileIo 把字节写盘，最后回包唤醒 Rust worker。
       this.downloadSave(id, request.text, data);
     } else if (request.kind === 'clipboard_get') {
@@ -247,19 +247,19 @@ struct Index {
         const pb = pasteboard.getSystemPasteboard();
         pb.getData().then((pd: pasteboard.PasteData): void => {
           const text = pd.getPrimaryText() ?? '';
-          console.info(`GridCraft clipboard_get: ${text.length} chars`);
+          console.info(`TextureCraft clipboard_get: ${text.length} chars`);
           native.reply(id, true, text, new ArrayBuffer(0));
         }).catch((err: Error): void => {
-          console.error(`GridCraft clipboard_get failed: ${err.message}`);
+          console.error(`TextureCraft clipboard_get failed: ${err.message}`);
           native.reply(id, false, '', new ArrayBuffer(0));
         });
       } catch (err) {
         const e = err as Error;
-        console.error(`GridCraft clipboard_get exception: ${e.message}`);
+        console.error(`TextureCraft clipboard_get exception: ${e.message}`);
         native.reply(id, false, '', new ArrayBuffer(0));
       }
     } else if (request.kind === 'clipboard_set') {
-      // 系统剪贴板写入（跨 App 复制）：把 GridCraft 复制出的纯文本（tab 分隔）写进系统剪贴板，
+      // 系统剪贴板写入（跨 App 复制）：把 TextureCraft 复制出的纯文本（tab 分隔）写进系统剪贴板，
       // 其它应用即可粘贴。setData 无需权限（调试包即可用，已实测 2 chars 写入成功）。
       // 用 setDataSync 同步写入，写完立即回包唤醒 Rust worker。
       // 纯文本 MIME 用字面量 'text/plain'（与 SDK 的 MIMETYPE_TEXT_PLAIN 同值），避免默认命名空间访问歧义。
@@ -268,11 +268,11 @@ struct Index {
         const text = request.text ?? '';
         const pd = pasteboard.createData('text/plain', text);
         pb.setDataSync(pd);
-        console.info(`GridCraft clipboard_set: ${text.length} chars`);
+        console.info(`TextureCraft clipboard_set: ${text.length} chars`);
         native.reply(id, true, '', new ArrayBuffer(0));
       } catch (err) {
         const e = err as Error;
-        console.error(`GridCraft clipboard_set exception: ${e.message}`);
+        console.error(`TextureCraft clipboard_set exception: ${e.message}`);
         native.reply(id, false, '', new ArrayBuffer(0));
       }
     } else if (request.kind === 'print') {
@@ -298,7 +298,7 @@ struct Index {
       this.imeController = controller;
       return controller;
     } catch (error) {
-      console.error(`GridCraft IME controller failed: ${(error as Error).message}`);
+      console.error(`TextureCraft IME controller failed: ${(error as Error).message}`);
       return undefined;
     }
   }
@@ -324,9 +324,9 @@ struct Index {
         this.imeShown = (status === inputMethod.KeyboardStatus.SHOW);
       });
       this.imeBound = true;
-      console.info('GridCraft IME listeners bound');
+      console.info('TextureCraft IME listeners bound');
     } catch (error) {
-      console.warn(`GridCraft IME bind failed: ${(error as Error).message}`);
+      console.warn(`TextureCraft IME bind failed: ${(error as Error).message}`);
     }
   }
 
@@ -341,23 +341,23 @@ struct Index {
     }
     if (show) {
       try {
-        this.getUIContext().getFocusController().requestFocus('gridcraft-ime-anchor');
+        this.getUIContext().getFocusController().requestFocus('texturecraft-ime-anchor');
       } catch (error) {
-        console.warn(`GridCraft IME anchor focus failed: ${(error as Error).message}`);
+        console.warn(`TextureCraft IME anchor focus failed: ${(error as Error).message}`);
       }
       try {
         await controller.attach(true, this.imeTextConfig());
         this.imeAttached = true;
         this.imeShown = true;
-        console.info('GridCraft IME attached');
+        console.info('TextureCraft IME attached');
       } catch (error) {
-        console.warn(`GridCraft IME attach failed: ${(error as Error).message}`);
+        console.warn(`TextureCraft IME attach failed: ${(error as Error).message}`);
         try {
           await controller.showTextInput(inputMethod.RequestKeyboardReason.OTHER);
           this.imeAttached = true;
           this.imeShown = true;
         } catch (e2) {
-          console.warn(`GridCraft IME show failed: ${(e2 as Error).message}`);
+          console.warn(`TextureCraft IME show failed: ${(e2 as Error).message}`);
         }
       }
       if (this.imeAttached) {
@@ -366,7 +366,7 @@ struct Index {
         try {
           await controller.showTextInput(inputMethod.RequestKeyboardReason.TOUCH);
         } catch (error) {
-          console.warn(`GridCraft IME showTextInput failed: ${(error as Error).message}`);
+          console.warn(`TextureCraft IME showTextInput failed: ${(error as Error).message}`);
         }
         this.bindImeListeners(controller);
       }
@@ -375,7 +375,7 @@ struct Index {
       try {
         if (this.imeAttached) { await controller.hideTextInput(); }
       } catch (error) {
-        console.warn(`GridCraft IME hide failed: ${(error as Error).message}`);
+        console.warn(`TextureCraft IME hide failed: ${(error as Error).message}`);
       }
       try {
         if (this.imeAttached) { await controller.detach(); }
@@ -409,15 +409,15 @@ struct Index {
     try {
       const uris = await new picker.DocumentViewPicker(this.context).select(new picker.DocumentSelectOptions());
       if (!this.alive || generation !== this.generation || uris.length === 0) {
-        console.info(`GridCraft pick open: cancelled (alive=${this.alive} gen ${generation}!=${this.generation} n=${uris.length})`);
+        console.info(`TextureCraft pick open: cancelled (alive=${this.alive} gen ${generation}!=${this.generation} n=${uris.length})`);
         native.reply(id, false, 'cancelled', new ArrayBuffer(0));
         return;
       }
       const uriStr = uris[0];
       const info = new fileUri.FileUri(uriStr);
-      // 文件名先解码，落沙箱的临时名与 gridcraft 显示的文档名都应是真实可读名（而非 %xx 串）。
+      // 文件名先解码，落沙箱的临时名与 texturecraft 显示的文档名都应是真实可读名（而非 %xx 串）。
       const baseName = percentDecodeName(info.name || uriStr.substring(uriStr.lastIndexOf('/') + 1) || 'document');
-      console.info(`GridCraft pick open: uri=${uriStr} path=${info.path} name=${baseName}`);
+      console.info(`TextureCraft pick open: uri=${uriStr} path=${info.path} name=${baseName}`);
 
       // 把 picker 授权的文件复制进沙箱 .inbox，Rust 侧再用 std::fs 按路径读取。
       // 关键：fileIo.copyFileSync 原生支持 picker 返回的 file:// URI（含非 ASCII 名），
@@ -429,7 +429,7 @@ struct Index {
       } catch (e) {
         // 目录已存在。
       }
-      // 用真实文件名落沙箱：GridCraft 用回传路径的末段作文档标题，若加时间戳前缀会让
+      // 用真实文件名落沙箱：TextureCraft 用回传路径的末段作文档标题，若加时间戳前缀会让
       // 标题变成 "1793999738981_Book1.xlsx"。.inbox 只是临时目录，同名覆盖即可。
       const dst = inbox + '/' + baseName;
       try {
@@ -441,23 +441,23 @@ struct Index {
         fileIo.copyFileSync(uriStr, dst);
       } catch (uriErr) {
         // 极少数情况下按 URI 复制失败，退回用解码后的真实路径复制。
-        console.warn(`GridCraft pick open: copySync by URI failed (${(uriErr as Error).message}); trying decoded path`);
+        console.warn(`TextureCraft pick open: copySync by URI failed (${(uriErr as Error).message}); trying decoded path`);
         fileIo.copyFileSync(info.path, dst);
       }
       const size = fileIo.statSync(dst).size;
-      console.info(`GridCraft pick open: copied ${size} bytes -> ${dst}`);
+      console.info(`TextureCraft pick open: copied ${size} bytes -> ${dst}`);
       // 把沙箱路径回传给 Rust（open/file 读此路径，save 写此路径）。
       native.reply(id, true, dst, new ArrayBuffer(0));
     } catch (error) {
       const err = error as Error;
-      console.error(`GridCraft pick open FAILED: ${err.message}\n${err.stack ?? ''}`);
+      console.error(`TextureCraft pick open FAILED: ${err.message}\n${err.stack ?? ''}`);
       native.reply(id, false, String(err.message ?? error), new ArrayBuffer(0));
     }
   }
 
-  // 另存为 / 导出：弹系统保存位置选择器（DocumentViewPicker.save），把 GridCraft 交来的
+  // 另存为 / 导出：弹系统保存位置选择器（DocumentViewPicker.save），把 TextureCraft 交来的
   // 文件字节（data）写到用户所选的 picker 授权 URI。沙箱外位置只能经授权 URI 用 fileIo 写，
-  // Rust std::fs 写不了，故 GridCraft 的 saveAs / PDF 导出统一走 download(name, bytes)。
+  // Rust std::fs 写不了，故 TextureCraft 的 saveAs / PDF 导出统一走 download(name, bytes)。
   private async downloadSave(id: number, name: string, bytes: ArrayBuffer): Promise<void> {
     const generation = this.generation;
     try {
@@ -470,16 +470,16 @@ struct Index {
       options.newFileNames = [suggestedName];
       const uris = await new picker.DocumentViewPicker(this.context).save(options);
       if (!this.alive || generation !== this.generation || !uris || uris.length === 0) {
-        console.info(`GridCraft download: picker cancelled (alive=${this.alive} n=${uris ? uris.length : 0})`);
+        console.info(`TextureCraft download: picker cancelled (alive=${this.alive} n=${uris ? uris.length : 0})`);
         native.reply(id, false, 'cancelled', new ArrayBuffer(0));
         return;
       }
-      console.info(`GridCraft download: picker -> ${uris[0]} (name=${suggestedName}, ${bytes.byteLength} bytes)`);
+      console.info(`TextureCraft download: picker -> ${uris[0]} (name=${suggestedName}, ${bytes.byteLength} bytes)`);
       // 写盘 + 回包（唤醒阻塞中的 Rust worker），复用 host_save 时代的字节写入逻辑。
       this.writeSave(id, uris[0], bytes);
     } catch (error) {
       const err = error as Error;
-      console.error(`GridCraft download FAILED: ${err.message}`);
+      console.error(`TextureCraft download FAILED: ${err.message}`);
       native.reply(id, false, String(err.message ?? error), new ArrayBuffer(0));
     }
   }
@@ -507,14 +507,14 @@ struct Index {
       const file = fileIo.openSync(path, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
       try { fileIo.writeSync(file.fd, bytes); } finally { fileIo.closeSync(file); }
       const uri = fileUri.getUriFromPath(path);
-      console.info(`GridCraft print: wrote ${bytes.byteLength} bytes -> ${uri}`);
+      console.info(`TextureCraft print: wrote ${bytes.byteLength} bytes -> ${uri}`);
       // 弹系统打印页（云打印 / 存为 PDF 等由系统提供）；task 在打印任务结束时 resolve。
       const task = await print.print([uri], this.context);
-      console.info(`GridCraft print: system print page started (task=${task ? 'ok' : 'n/a'})`);
+      console.info(`TextureCraft print: system print page started (task=${task ? 'ok' : 'n/a'})`);
       native.reply(id, true, uri, new ArrayBuffer(0));
     } catch (error) {
       const err = error as Error;
-      console.error(`GridCraft print FAILED: ${err.message}`);
+      console.error(`TextureCraft print FAILED: ${err.message}`);
       native.reply(id, false, String(err.message ?? error), new ArrayBuffer(0));
     }
   }
@@ -540,15 +540,15 @@ struct Index {
         } finally {
           fileIo.closeSync(file);
         }
-        console.info(`GridCraft save: wrote ${bytes.byteLength} bytes -> ${target}`);
+        console.info(`TextureCraft save: wrote ${bytes.byteLength} bytes -> ${target}`);
         native.reply(id, true, target, new ArrayBuffer(0));
         return;
       } catch (error) {
         lastErr = String((error as Error).message ?? error);
-        console.warn(`GridCraft save write: openSync failed for ${target}: ${lastErr}`);
+        console.warn(`TextureCraft save write: openSync failed for ${target}: ${lastErr}`);
       }
     }
-    console.error(`GridCraft save write FAILED: ${lastErr}`);
+    console.error(`TextureCraft save write FAILED: ${lastErr}`);
     native.reply(id, false, lastErr, new ArrayBuffer(0));
   }
 
@@ -575,19 +575,19 @@ struct Index {
   build() {
     Stack() {
       if (this.initialized) {
-        XComponent({ id: 'gridcraft-native', type: XComponentType.SURFACE, libraryname: 'gridcraft' })
+        XComponent({ id: 'texturecraft-native', type: XComponentType.SURFACE, libraryname: 'texturecraft' })
           .width('100%').height('100%')
           .onLoad((): void => {
-            try { this.getUIContext().getFocusController().requestFocus('gridcraft-editor'); } catch (e) {}
+            try { this.getUIContext().getFocusController().requestFocus('texturecraft-editor'); } catch (e) {}
           })
           // 不设 focusOnTouch：打字期间点击画布若把焦点抢回 XComponent（非编辑代理），
           // 会断开输入法绑定导致键盘收起；触摸/指针事件不经 ArkUI 焦点，不受影响。
-          .id('gridcraft-editor').focusable(true).defaultFocus(true)
+          .id('texturecraft-editor').focusable(true).defaultFocus(true)
       }
       // 隐藏的 IME 锚点：输入法框架只认「获得焦点的编辑组件」为可输入位置，
       // attach 前必须先聚焦它（官方自定义编辑框方案）。
       Text('')
-        .id('gridcraft-ime-anchor')
+        .id('texturecraft-ime-anchor')
         .focusable(true)
         .width(1).height(1)
         .opacity(0)
@@ -596,14 +596,14 @@ struct Index {
           if (this.imeAttached) {
             this.imeAttached = false;
             this.imeShown = false;
-            console.info('GridCraft IME anchor blurred, binding reset');
+            console.info('TextureCraft IME anchor blurred, binding reset');
           }
         })
       if (this.startupVisible) {
         Column() {
           Column({ space: 18 }) {
             Image($r('app.media.app_icon')).width(76).height(76).borderRadius(18)
-            Text('GridCraft').fontSize(30).fontWeight(FontWeight.Medium).fontColor('#F4F4F5')
+            Text('TextureCraft').fontSize(30).fontWeight(FontWeight.Medium).fontColor('#F4F4F5')
             Row({ space: 10 }) {
               LoadingProgress().width(18).height(18).color('#A5BFFF')
               Text(this.initialized ? '正在启动编辑器…' : '正在准备文档目录…')
@@ -617,7 +617,7 @@ struct Index {
       }
       if (this.failure.length > 0) {
         Column() {
-          Text('GridCraft For HarmonyOS 原生运行错误').fontSize(20).fontColor('#FFFFFF')
+          Text('TextureCraft For HarmonyOS 原生运行错误').fontSize(20).fontColor('#FFFFFF')
           Text(this.failure).fontSize(14).fontColor('#FFFFFF').margin({ top: 12 })
           if (!this.initialized) {
             Button('重试').onClick((): void => { this.failure = ''; this.initializeHost(this.generation); })

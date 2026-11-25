@@ -1,22 +1,23 @@
-//! 系统语言与系统字体：把鸿蒙的 locale / 字体接进 gridcraft 上游。
+//! 系统语言与系统字体：把鸿蒙的 locale / 字体接进 texturecraft 上游。
 //!
-//! 语言（与 wordcraft 根本不同，须注意）：gridcraft 的界面翻译是**内嵌源码**的（`crates/ui-egui/src/i18n/*.rs`
-//! 每个语言一个 `mod`，编译期 `translate()`），**没有** `CRAFT_I18N_DIR`/外部 tsv，也**没有**
-//! `WORDCRAFT_LANGUAGE` 这类专属环境变量。「跟随系统」走 `i18n::Language::system()` →
+//! 语言：texturecraft 的界面翻译是**内嵌源码**的（`crates/ui-egui/src/i18n/*.rs` 每个语言一个
+//! `mod`，编译期 `translate()`），「跟随系统」走 `i18n::set_language("")` → `system_language()` →
 //! `sys_locale::get_locale()`，在 Linux（含 OHOS）上读 `LC_ALL`/`LC_MESSAGES`/`LANGUAGE`/`LANG`，
 //! 而鸿蒙应用进程不带这些变量，于是「跟随系统」永远解析成英文。ArkTS 侧本来就能拿到真实 locale
 //! （`i18n.System.getSystemLocale()`），这里把 BCP-47 标签写进 `LANG`（及 `LANGUAGE`/`LC_ALL`/
 //! `LC_MESSAGES`），`sys_locale` 便解析出正确语言，上游自己的「跟随系统」完整生效。
 //!
-//! 字体：gridcraft 的 CJK fallback（`theme/font_fallback.rs` 的 `LINUX_CJK_DIRS`）只扫
-//! **22 个固定绝对路径**（`/usr/share/fonts/...`、`/run/host/fonts/...`），鸿蒙沙箱既没有、也
-//! 写不进这些目录。真机实测（2026-11-07，HPR-W72）：即使把 `HarmonyOS_Sans_SC.ttf` 复制进
-//! `$HOME/.fonts` 并命名成上游候选名，中文工具栏标签仍是满屏 tofu —— 因为那份目录只被
-//! `system_font_dirs()`（字体目录 catalog）扫，CJK fallback 根本不看它。
+//! 字体：texturecraft 的 CJK fallback（`ui-egui/src/fonts.rs` 的 `Script::system_files`）只扫
+//! **固定绝对路径**（`/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc` 等），鸿蒙沙箱既没有、
+//! 也写不进这些目录。真机实测（gridcraft，2026-11-07，HPR-W72）：即使把 `HarmonyOS_Sans_SC.ttf`
+//! 复制进 `$HOME/.fonts` 并命名成上游候选名，中文工具栏标签仍是满屏 tofu —— 因为 texturecraft 的
+//! `system_files()` 根本不看 `$HOME/.fonts`。
 //!
-//! 因此真正的修复在宿主侧：`cjk_font_bytes()` 直接读出系统字体字节，由 `lib.rs` 用 egui 0.37
-//! 的 `Context::add_font(FontInsert)` 以 `FontPriority::Lowest` 追加到所有字体族。
-//! 不 patch 上游、不写系统分区、不动主题；`stage_fonts()` 仍保留作为其它代码路径的兜底。
+//! 因此真正的修复在宿主侧：`cjk_font_bytes()` 直接读出系统字体字节，由 `lib.rs` 用 egui 0.37 的
+//! `Context::add_font(FontInsert)` 以 `FontPriority::Lowest` 追加到所有字体族（best-effort）。
+//! 上游 `UiFonts::update()` 在语言切换时用 `set_fonts` 整体替换字体定义、会清掉此注入；`lib.rs` 的
+//! 帧循环检测到 `prefs.language` 变化后调用 `inject_cjk_fallback` 重新注入（仅语言变化那一刻重读
+//! ~20MB 字节，稳态早退不重复），故中文兜底稳定生效，无需改上游。`stage_fonts()` 仍保留作兜底。
 
 use std::path::{Path, PathBuf};
 
@@ -45,9 +46,9 @@ fn system_tag(locale: &str, language: &str) -> Option<String> {
     Some(tag.chars().map(|c| if c == '_' { '-' } else { c }).collect())
 }
 
-/// 在 `gc_init` 里、任何 UI 与字体读取之前调用一次。
+/// 在 `tc_init` 里、任何 UI 与字体读取之前调用一次。
 ///
-/// 顺序有意义：先写环境变量，再让 `i18n::Language::system()` 首次求值（读 sys_locale，
+/// 顺序有意义：先写环境变量，再让 `i18n::set_language("")` 首次求值（读 sys_locale，
 /// 第一次读到什么就固定什么）。
 pub fn install(files_dir: &str, locale: &str, language: &str) {
     let tag = system_tag(locale, language);
@@ -60,27 +61,27 @@ pub fn install(files_dir: &str, locale: &str, language: &str) {
         std::env::set_var("LANG", tag);
         std::env::set_var("LANGUAGE", tag);
     }
-    // 把鸿蒙系统字体挂到 $HOME/.fonts（gridcraft 的 system_font_dirs() 在 linux 分支扫
-    // /usr/share/fonts、$HOME/.fonts、$HOME/.local/share/fonts；但 CJK 回退用的是固定
-    // LINUX_CJK_DIRS，不含 $HOME/.fonts——故此步对中文界面是 best-effort，英文界面不受影响）。
+    // 把鸿蒙系统字体挂到 $HOME/.fonts（texturecraft 的 `system_files()` 在 linux 分支只扫固定的
+    // /usr/share/fonts/* 绝对路径，不含 $HOME/.fonts——故此步对中文界面是 best-effort，
+    // 英文界面不受影响；真正生效的是 lib.rs 的 add_font 注入）。
     //
-    // 关键：gridcraft 的 system_font_dirs() 用 env::var("HOME") 拼路径，而 stage 的目标目录必须
+    // 关键：texturecraft 的 data_folder 用 env::var("HOME") 拼路径，而 stage 的目标目录必须
     // 与之一致。OHOS 应用进程里 HOME 可能已被设成别的路径或空串——此时「挂进 files_dir/.fonts」
     // 和「从 $HOME/.fonts 找」就不是同一个目录，字体扫描必然找不到。因此这里**无条件**把 HOME
     // 指向 files_dir，再挂到 $HOME/.fonts，保证挂与找同目录。
     let prior_home = std::env::var_os("HOME").map(|s| s.to_string_lossy().into_owned());
     std::env::set_var("HOME", files_dir);
-    log::info!("locale: prior HOME={prior_home:?} -> now {files_dir}");
+    log::info!("[tc] locale: prior HOME={prior_home:?} -> now {files_dir}");
     let tag_str = tag.as_deref().unwrap_or_default();
     let home = Path::new(files_dir);
-    // 尽量命中 gridcraft 的 CJK 候选名（NotoSansCJK{locale}-Regular.otf 与合并 TTC）。
+    // 尽量命中 texturecraft 的 CJK 候选名（NotoSansCJK{locale}-Regular.otf 与合并 TTC）。
     let mut ok = false;
     for base in [home.join(".fonts"), home.join(".local/share/fonts")] {
         if let Ok(dir) = stage_fonts(&base, tag_str) {
             let staged = dir.join(CJK_OTF);
             if let Ok(meta) = std::fs::metadata(&staged) {
                 log::info!(
-                    "locale: tag={tag_str:?} HOME={} cjk staged at {} ({} bytes)",
+                    "[tc] locale: tag={tag_str:?} HOME={} cjk staged at {} ({} bytes)",
                     home.display(), staged.display(), meta.len()
                 );
                 ok = true;
@@ -89,16 +90,15 @@ pub fn install(files_dir: &str, locale: &str, language: &str) {
         }
     }
     if !ok {
-        log::warn!("locale: tag={tag_str:?} system CJK font NOT staged — interface Chinese may show as boxes");
+        log::warn!("[tc] locale: tag={tag_str:?} system CJK font NOT staged — interface Chinese may show as boxes");
     }
 }
 
 /// 读取鸿蒙系统 CJK 字体的字节，交给宿主用 `egui::Context::add_font` 注入 fallback。
 ///
-/// 这是中文界面不出 tofu 的**关键路径**：上游 `load_fallback` 只扫固定的
-/// `LINUX_CJK_DIRS`，沙箱写不进去；`stage_fonts()` 挂到 `$HOME/.fonts` 的副本
-/// 对 CJK fallback 无效（`system_font_dirs()` 只把它当 catalog）。这里绕过路径扫描，
-/// 直接把字节交给宿主注入 egui 的字体定义。
+/// 这是中文界面不出 tofu 的**关键路径**：上游 `system_files()` 只扫固定绝对路径，沙箱写不进去；
+/// `stage_fonts()` 挂到 `$HOME/.fonts` 的副本对 CJK fallback 无效。这里绕过路径扫描，直接把字节
+/// 交给宿主注入 egui 的字体定义。
 ///
 /// 字体按界面语言挑 SC/TC；`HarmonyOS_Sans_SC.ttf` 约 20 MB，只在启动时读一次。
 pub fn cjk_font_bytes(language: &str) -> Option<Vec<u8>> {
@@ -106,18 +106,18 @@ pub fn cjk_font_bytes(language: &str) -> Option<Vec<u8>> {
     match std::fs::read(&source) {
         Ok(bytes) if !bytes.is_empty() => {
             log::info!(
-                "locale: system CJK face {} ({} bytes) ready for fallback injection",
+                "[tc] locale: system CJK face {} ({} bytes) ready for fallback injection",
                 source.display(),
                 bytes.len()
             );
             Some(bytes)
         }
         Ok(_) => {
-            log::warn!("locale: system CJK face {} is empty", source.display());
+            log::warn!("[tc] locale: system CJK face {} is empty", source.display());
             None
         }
         Err(e) => {
-            log::warn!("locale: cannot read {}: {e} — Chinese UI will show tofu", source.display());
+            log::warn!("[tc] locale: cannot read {}: {e} — Chinese UI will show tofu", source.display());
             None
         }
     }
@@ -130,7 +130,7 @@ pub fn cjk_font_bytes(language: &str) -> Option<Vec<u8>> {
 fn stage_fonts(base: &Path, language: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(base).map_err(|e| format!("create .fonts: {e}"))?;
     let cjk = cjk_face(language);
-    // 按 gridcraft 的多个 CJK 候选名都放一份，任一命中即可。
+    // 按 texturecraft 的多个 CJK 候选名都放一份，任一命中即可。
     stage_one(base, CJK_OTF, cjk)?;
     stage_one(base, CJK_TTC, cjk)?;
     stage_one(base, CJK_JP_OTF, cjk)?;
@@ -156,7 +156,7 @@ fn stage_one(base: &Path, rel: &str, face: &str) -> Result<(), String> {
     }
     // 沙箱常禁软链：退回复制。
     if std::os::unix::fs::symlink(&source, &link).is_err() {
-        log::info!("locale: staging {} as {}", source.display(), link.display());
+        log::info!("[tc] locale: staging {} as {}", source.display(), link.display());
         std::fs::copy(&source, &link).map_err(|e| format!("copy {}: {e}", link.display()))?;
     }
     Ok(())

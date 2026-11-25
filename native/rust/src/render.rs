@@ -1,5 +1,7 @@
 //! 原生窗口所有权保留在 Rust 侧（不进入上游安全 Rust workspace）。
 //! 用 wgpu GL 后端在鸿蒙 NativeWindow 上直接绘制 egui，不经 eframe/winit。
+//! 与 gridcraft 同构（TextureCraft 的 3D 视口烘焙/路径追踪走 compute 管线，GLES 上由上游
+//! device_supports_tracing 优雅降级；本渲染器只负责 2D 主 UI 的 egui 呈现）。
 use raw_window_handle::{
     DisplayHandle, HasDisplayHandle, HasWindowHandle, OhosNdkWindowHandle, WindowHandle,
 };
@@ -8,7 +10,7 @@ use std::{ffi::c_void, ptr::NonNull, sync::Arc};
 unsafe extern "C" {
     fn OH_NativeWindow_NativeObjectUnreference(object: *mut c_void) -> i32;
     /// 由 C++ 边界（bridge.cpp）实现：设置窗口色彩空间（P3=1 / sRGB=0）。
-    fn gc_set_window_color_space(window: *mut c_void, p3: bool) -> i32;
+    fn tc_set_window_color_space(window: *mut c_void, p3: bool) -> i32;
 }
 
 /// XComponent 回调在发往 worker 前已持有原生引用；Window 拥有这一引用。
@@ -35,11 +37,10 @@ impl HasWindowHandle for Window {
     }
 }
 
-/// 深度/模板位数。gridcraft 是纯 egui 渲染（没有 3D 视口回调、没有 overlay 管线），
-/// 本 depth-stencil 附件是从 solidcraft 模板沿用的、经验证的无害路径：egui 自己的管线
-/// 通过 `RendererOptions.depth_stencil_format` 声明同格式附件，渲染时一并提供，格式一致
-/// 即可通过 wgpu 校验。若后续发现 GLES 上 depth 纹理开销偏大，可整段移除（renderer 侧
-/// `depth_stencil_format: None`、渲染 pass 不带 depth 附件即回到标准纯 egui 路径）。
+/// 深度/模板位数。TextureCraft 有 3D 视口，但首版 GLES 路径只画 2D 主 UI（3D 走上游 compute
+/// 管线，GLES 上 device_supports_tracing 会降级）；本 depth-stencil 附件是从 gridcraft/solidcraft
+/// 模板沿用的、经验证的无害路径：egui 自己的管线通过 `RendererOptions.depth_stencil_format`
+/// 声明同格式附件，渲染时一并提供，格式一致即通过 wgpu 校验。
 pub const DEPTH_BITS: u8 = 24;
 pub const STENCIL_BITS: u8 = 8;
 
@@ -59,7 +60,7 @@ fn far_depth() -> f32 {
 
 fn create_depth(device: &wgpu::Device, w: u32, h: u32) -> (wgpu::Texture, wgpu::TextureView) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("GridCraft depth"),
+        label: Some("TextureCraft depth"),
         size: wgpu::Extent3d { width: w.max(1), height: h.max(1), depth_or_array_layers: 1 },
         mip_level_count: 1,
         sample_count: 1,
@@ -83,9 +84,7 @@ pub struct GpuRender {
     pub instance: wgpu::Instance,
     pub window: Option<Arc<Window>>,
     pub color: crate::display_color::DisplayColor,
-    /// 深度/模板附件：gridcraft 是纯 egui 渲染（无 3D 视口回调），此附件是从 solidcraft 模板
-    /// 沿用的经验证无害路径——renderer 经 `RendererOptions.depth_stencil_format` 声明同格式，
-    /// 渲染时一并提供，格式一致即通过 wgpu 校验。
+    /// 深度/模板附件（见 `DEPTH_BITS` 注释）。
     depth_view: Option<wgpu::TextureView>,
     depth_size: (u32, u32),
 }
@@ -105,7 +104,7 @@ impl GpuRender {
         }))
         .map_err(|e| e.to_string())?;
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("GridCraft For HarmonyOS"),
+            label: Some("TextureCraft For HarmonyOS"),
             required_limits: adapter.limits(),
             ..Default::default()
         }))
@@ -316,7 +315,7 @@ impl GpuRender {
                 },
             })];
             let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("GridCraft UI"),
+                label: Some("TextureCraft UI"),
                 color_attachments: &attachments,
                 depth_stencil_attachment: depth_view.map(|view| {
                     wgpu::RenderPassDepthStencilAttachment {
@@ -468,7 +467,7 @@ impl Render {
 
 fn declare_color(window: &Window, p3: bool) -> Result<(), String> {
     // SAFETY: Window 拥有有效引用；所有色彩声明与 EGL 操作在 render worker 上串行执行。
-    let result = unsafe { gc_set_window_color_space(window.0 as *mut c_void, p3) };
+    let result = unsafe { tc_set_window_color_space(window.0 as *mut c_void, p3) };
     if result == 0 {
         Ok(())
     } else {

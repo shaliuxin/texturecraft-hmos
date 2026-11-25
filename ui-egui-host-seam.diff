@@ -1,0 +1,193 @@
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 3df3eb3..7981529 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -293,17 +293,27 @@ pub(crate) fn start_ui(saved: Option<UiState>, session: &mut Session) -> UiState
+ 
+ impl TextureCraftApp {
+     /// The app around `session`, with the saved UI state (or defaults in the OS language) and the GPU viewport.
+-    pub fn new(cc: &eframe::CreationContext<'_>, mut session: Session) -> TextureCraftApp {
+-        theme::install(&cc.egui_ctx);
++    ///
++    /// `has_window` decides whether the native file dialogs may open a real window. The desktop/web
++    /// path builds it from a live `CreationContext`; the HarmonyOS host builds it without a window
++    /// (see [`TextureCraftApp::new_for_host`]).
++    pub fn new_common(
++        egui_ctx: &egui::Context,
++        wgpu_render_state: Option<&eframe::egui_wgpu::RenderState>,
++        storage: Option<&dyn eframe::Storage>,
++        mut session: Session,
++        has_window: bool,
++    ) -> TextureCraftApp {
++        theme::install(egui_ctx);
+ 
+         // Bakes cast their rays on a GPU device of their own (created on the first bake)
+         #[cfg(not(target_arch = "wasm32"))]
+         texturecraft_engine::bake::install_gpu_tracer(Arc::new(texturecraft_render::gpu_bake::GpuBaker::new()));
+-        let gpu = cc.wgpu_render_state.as_ref().map(|render_state| gpu::init(render_state, &cc.egui_ctx));
++        let gpu = wgpu_render_state.map(|render_state| gpu::init(render_state, egui_ctx));
+ 
+         // The first run speaks the OS (or browser) language
+         let mut ui_store = ui_state_store::UiStateStore::new(ui_state_store::FILE.get().cloned());
+-        let mut ui = start_ui(ui_store.load(cc.storage), &mut session);
++        let mut ui = start_ui(ui_store.load(storage), &mut session);
+ 
+         // No window opens by itself with no project (a saved layout may have left Export open)
+         if !session.project_open {
+@@ -346,7 +356,7 @@ impl TextureCraftApp {
+             properties_popup: None,
+             picking_id_color: None,
+             picking_symmetry_plane: false,
+-            render_state: cc.wgpu_render_state.clone(),
++            render_state: wgpu_render_state.cloned(),
+             fonts: fonts::UiFonts::default(),
+             banner: None,
+             title_bar: titlebar::TitleBar::default(),
+@@ -357,7 +367,7 @@ impl TextureCraftApp {
+             #[cfg(not(target_arch = "wasm32"))]
+             updates_rt: updates_ui::Runtime::default(),
+             #[cfg(not(target_arch = "wasm32"))]
+-            file_dialogs: file_dialogs::FileDialogs::new(cc.egui_ctx.clone()),
++            file_dialogs: file_dialogs::FileDialogs::new(egui_ctx.clone()),
+             #[cfg(not(target_arch = "wasm32"))]
+             saving_for_prompt: false,
+             #[cfg(not(target_arch = "wasm32"))]
+@@ -366,16 +376,16 @@ impl TextureCraftApp {
+             settings_bindings: keymap::Bindings::default(),
+         };
+ 
+-        // The test harness has no window: its file dialogs answer Cancelled, never on the desktop
++        // The test harness and the HarmonyOS host have no window: their file dialogs answer Cancelled
+         #[cfg(not(target_arch = "wasm32"))]
+-        if cc.winit_window().is_none() {
++        if !has_window {
+             app.file_dialogs.without_window();
+         }
+         app.ui.rename = None;
+         app.ui.windows.new_project = false;
+         i18n::set_language(&app.ui.prefs.language);
+         app.report_ui_storage_warning();
+-        export_templates::load_library(&mut app, cc.storage);
++        export_templates::load_library(&mut app, storage);
+ 
+         #[cfg(not(target_arch = "wasm32"))]
+         {
+@@ -401,6 +411,13 @@ impl TextureCraftApp {
+         app
+     }
+ 
++    /// The app around `session`, built from a live `eframe::CreationContext` (desktop and web).
++    /// Forwards to [`TextureCraftApp::new_common`]; the HarmonyOS host uses `new_for_host` instead,
++    /// so it never constructs an `eframe::Frame`.
++    pub fn new(cc: &eframe::CreationContext<'_>, session: Session) -> TextureCraftApp {
++        Self::new_common(&cc.egui_ctx, cc.wgpu_render_state.as_ref(), cc.storage, session, cc.winit_window().is_some())
++    }
++
+     /// Run an engine command, reporting errors as toasts. Returns the result on success.
+     pub fn run(&mut self, id: &str, params: Value) -> Option<Value> {
+         self.ui.prefs.apply_resource_limits();
+@@ -950,20 +967,10 @@ impl TextureCraftApp {
+     }
+ }
+ 
+-impl eframe::App for TextureCraftApp {
+-    /// The browser never tells eframe the page is closing, so save often there.
+-    fn auto_save_interval(&self) -> std::time::Duration {
+-        std::time::Duration::from_secs(if cfg!(target_arch = "wasm32") { 5 } else { 30 })
+-    }
+-
+-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+-        self.ui.tool_settings = texturecraft_engine::ToolSettings::of(&self.session.tool);
+-        self.ui_store.save(&self.ui, storage);
+-        self.report_ui_storage_warning();
+-        export_templates::save_library(self, storage);
+-    }
+-
+-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
++impl TextureCraftApp {
++    /// The per-frame logic, without an `eframe::Frame`. The desktop/web `logic` and the HarmonyOS
++    /// host's `logic_host` both run this; `eframe` supplies the `Frame`, the host never builds one.
++    fn logic_impl(&mut self, ctx: &egui::Context) {
+         let t0 = now_ms();
+         let now = ctx.input(|i| i.time);
+         let dt = (now - self.last_time) as f32;
+@@ -1043,8 +1050,10 @@ impl eframe::App for TextureCraftApp {
+         windows::close_request(self, ctx);
+     }
+ 
+-    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
+-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
++    /// The UI pass, without an `eframe::Frame`. The desktop `ui` runs this and then the native
++    /// file dialogs' pending step (which needs the `Frame`); the HarmonyOS host's `ui_host` runs
++    /// only this, since it has no window to drive the native dialogs on.
++    fn ui_body(&mut self, ui: &mut egui::Ui) {
+         let ctx = ui.ctx().clone();
+         let started_ms = now_ms();
+ 
+@@ -1080,14 +1089,64 @@ impl eframe::App for TextureCraftApp {
+         #[cfg(not(target_arch = "wasm32"))]
+         updates_ui::show(self, &ctx);
+         toasts(self, &ctx);
+-        #[cfg(not(target_arch = "wasm32"))]
+-        self.file_dialogs.show_pending(frame);
++        // The native file dialogs' pending step needs the window's `Frame`; the desktop `ui` runs
++        // it after this body, the HarmonyOS host (no window) never does.
+ 
+         let ended_ms = now_ms();
+         let elapsed_ms = (ended_ms - started_ms) as f32;
+         self.ui_ms = if self.ui_ms == 0.0 { elapsed_ms } else { self.ui_ms * 0.9 + elapsed_ms * 0.1 };
+         self.profiler.end_frame(ended_ms, elapsed_ms);
+     }
++
++    /// The HarmonyOS host's entry points: it drives the app without an `eframe::Frame` or a native
++    /// window. `new_for_host` builds the app headless (file dialogs answer Cancelled); the two
++    /// per-frame runners mirror `logic`/`ui` minus the `Frame`, so the host never constructs one.
++    #[cfg(target_env = "ohos")]
++    pub fn new_for_host(
++        egui_ctx: &egui::Context,
++        wgpu_render_state: Option<eframe::egui_wgpu::RenderState>,
++        storage: Option<&dyn eframe::Storage>,
++        session: Session,
++    ) -> TextureCraftApp {
++        Self::new_common(egui_ctx, wgpu_render_state.as_ref(), storage, session, false)
++    }
++
++    #[cfg(target_env = "ohos")]
++    pub fn logic_host(&mut self, ctx: &egui::Context) {
++        self.logic_impl(ctx);
++    }
++
++    #[cfg(target_env = "ohos")]
++    pub fn ui_host(&mut self, ui: &mut egui::Ui) {
++        self.ui_body(ui);
++    }
++}
++
++impl eframe::App for TextureCraftApp {
++    /// The browser never tells eframe the page is closing, so save often there.
++    fn auto_save_interval(&self) -> std::time::Duration {
++        std::time::Duration::from_secs(if cfg!(target_arch = "wasm32") { 5 } else { 30 })
++    }
++
++    fn save(&mut self, storage: &mut dyn eframe::Storage) {
++        self.ui.tool_settings = texturecraft_engine::ToolSettings::of(&self.session.tool);
++        self.ui_store.save(&self.ui, storage);
++        self.report_ui_storage_warning();
++        export_templates::save_library(self, storage);
++    }
++
++    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
++        self.logic_impl(ctx);
++    }
++
++    #[cfg_attr(any(target_arch = "wasm32", target_env = "ohos"), allow(unused_variables))]
++    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
++        self.ui_body(ui);
++        // The native file dialogs' pending step needs the window's `Frame`; the HarmonyOS host
++        // (driven through `ui_host`) has none, so it is skipped there.
++        #[cfg(all(not(target_arch = "wasm32"), not(target_env = "ohos")))]
++        self.file_dialogs.show_pending(frame);
++    }
+ }
+ 
+ /// The data folder chosen in Settings, fixed at startup (unset: the default).

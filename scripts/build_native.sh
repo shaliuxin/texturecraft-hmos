@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
-# Build the HarmonyOS native libraries (every ABI in GRIDCRAFT_NATIVE_TARGETS) before hvigor/CMake.
+# Build the HarmonyOS native libraries (every ABI in TEXTURECRAFT_NATIVE_TARGETS) before hvigor/CMake.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ -f "$ROOT/scripts/dev.local.env" ]]; then source "$ROOT/scripts/dev.local.env"; fi
-# gridcraft 的界面 i18n 是内嵌在 crates/ui-egui/src/i18n/*.rs（zh.rs 为真实简体中文），
-# 无 CRAFT_I18N_DIR / 外部 tsv；语言由 Language::system() 读 LC_* 决定，C++ 侧 install_locale 设之。
-# 故本脚本不再设置 CRAFT_I18N_DIR。
+# texturecraft 的界面 i18n catalog 从 crates/ui-egui/src/i18n/*.rs 的 TABLE 数组
+# 转成 TSV 后由 CRAFT_I18N_DIR 指向，编译期嵌入二进制。无此目录则 catalog 为空、UI 全英文。
+if [[ -f "$ROOT/scripts/gen_i18n_tsv.py" ]]; then
+  python3 "$ROOT/scripts/gen_i18n_tsv.py"
+  export CRAFT_I18N_DIR="$ROOT"
+  export CRAFT_I18N_REQUIRED=1
+fi
+
+# eframe/egui-winit 的 OHOS 补丁落在 cargo 的 git 缓存里（stub 方案），清缓存/换机器会丢，
+# 编译前先把仓库里权威副本（third_party/eframe 等）同步回缓存，保证可复现。
+if [[ -f "$ROOT/scripts/restore_eframe.sh" ]]; then
+  bash "$ROOT/scripts/restore_eframe.sh"
+fi
 # Resolve the OHOS native SDK across Windows / macOS / Linux DevEco layouts.
-# GRIDCRAFT_NATIVE_SDK (or dev.local.env) wins; otherwise probe known locations, including the
+# TEXTURECRAFT_NATIVE_SDK (or dev.local.env) wins; otherwise probe known locations, including the
 # Windows default install path and the space-free junction C:/ohosnative used by .cargo/config.toml.
-if [[ -n "${GRIDCRAFT_NATIVE_SDK:-}" ]]; then
-  SDK="$GRIDCRAFT_NATIVE_SDK"
+if [[ -n "${TEXTURECRAFT_NATIVE_SDK:-}" ]]; then
+  SDK="$TEXTURECRAFT_NATIVE_SDK"
 else
   SDK=""
   for candidate in \
@@ -30,11 +40,11 @@ fi
 # One list drives the build: CMake maps the same ABIs (entry/build-profile.json5 abiFilters), and
 # verify_native.py checks the packaged set. Both ABIs ship by default so one HAP runs on ARM
 # devices and on the x86_64 phone/PC emulator images.
-TARGETS="${GRIDCRAFT_NATIVE_TARGETS:-aarch64-unknown-linux-ohos x86_64-unknown-linux-ohos}"
-PROFILE="${GRIDCRAFT_RUST_PROFILE:-release}"
+TARGETS="${TEXTURECRAFT_NATIVE_TARGETS:-aarch64-unknown-linux-ohos x86_64-unknown-linux-ohos}"
+PROFILE="${TEXTURECRAFT_RUST_PROFILE:-release}"
 # Windows 上 Defender/文件锁偶发让 rustc 挂死（进程 CPU 长时间 ~0）。把并行度限到 4
-# 并关掉增量编译可稳定规避（两次实测有效）；想更快可 export GRIDCRAFT_CARGO_JOBS=<n>。
-JOBS="${GRIDCRAFT_CARGO_JOBS:-${CARGO_BUILD_JOBS:-4}}"
+# 并关掉增量编译可稳定规避（两次实测有效）；想更快可 export TEXTURECRAFT_CARGO_JOBS=<n>。
+JOBS="${TEXTURECRAFT_CARGO_JOBS:-${CARGO_BUILD_JOBS:-4}}"
 case "$PROFILE" in
   release) ARGS+=(--release) ;;
   debug)   ARGS+=(--profile dev) ;;

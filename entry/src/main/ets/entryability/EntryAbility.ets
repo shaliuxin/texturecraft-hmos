@@ -1,4 +1,4 @@
-import native from 'libgridcraft.so';
+import native from 'libtexturecraft.so';
 import { AbilityConstant, Configuration, UIAbility, Want } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -27,15 +27,15 @@ export default class EntryAbility extends UIAbility {
     // 冷启动的「打开方式」：want.uri 只出现在 onCreate，必须写进 AppStorage 让页面消费；
     // 只处理 onNewWant 会让首次从文件管理器点开的应用丢掉文件。
     if (want?.uri) {
-      AppStorage.setOrCreate('gridcraftOpenWant', want.uri);
+      AppStorage.setOrCreate('texturecraftOpenWant', want.uri);
     }
-    console.info('GridCraft native ability created');
+    console.info('TextureCraft native ability created');
   }
 
   onNewWant(want: Want): void {
     // 应用已在前台时，系统通过 onNewWant 送来新的文件 URI；页面用 @StorageLink/@Watch 立即消费。
     if (want?.uri) {
-      AppStorage.setOrCreate('gridcraftOpenWant', want.uri);
+      AppStorage.setOrCreate('texturecraftOpenWant', want.uri);
     }
   }
 
@@ -52,12 +52,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    if (AppStorage.get<string>('gridcraftSystemTheme') === undefined) {
+    if (AppStorage.get<string>('texturecraftSystemTheme') === undefined) {
       this.syncSystemTheme(this.context.config?.colorMode);
     }
     windowStage.loadContent('pages/Index', (error: BusinessError) => {
       if (error.code) {
-        console.error(`GridCraft page failed: ${error.code} ${error.message}`);
+        console.error(`TextureCraft page failed: ${error.code} ${error.message}`);
         return;
       }
       this.installCloseInterceptor(windowStage);
@@ -80,7 +80,7 @@ export default class EntryAbility extends UIAbility {
     try {
       const mainWindow = windowStage.getMainWindowSync();
       mainWindow.on('windowWillClose', async (): Promise<boolean> => {
-        console.info('GridCraft window X: intercepted, forwarding to native close validation');
+        console.info('TextureCraft window X: intercepted, forwarding to native close validation');
         try {
           native.close();
           // 拦截本次系统关闭；Rust 确认后会 notify "close" → terminateSelf。
@@ -88,13 +88,13 @@ export default class EntryAbility extends UIAbility {
           return true;
         } catch (error) {
           // native 未就绪时不能把窗口锁死，放行系统关闭作为兜底（保持旧行为）。
-          console.error(`GridCraft native close unavailable: ${(error as Error).message}`);
+          console.error(`TextureCraft native close unavailable: ${(error as Error).message}`);
           return false;
         }
       });
-      console.info('GridCraft close interceptor registered');
+      console.info('TextureCraft close interceptor registered');
     } catch (error) {
-      console.error(`GridCraft close interceptor unavailable: ${(error as Error).message}`);
+      console.error(`TextureCraft close interceptor unavailable: ${(error as Error).message}`);
     }
   }
 }

@@ -1,25 +1,30 @@
 [package]
-name = "gridcraft-hmos"
-version = "0.19.1"
+name = "texturecraft-hmos"
+version = "0.6.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [lib]
-name = "gridcraft_hmos"
+name = "texturecraft_hmos"
 crate-type = ["staticlib"]
 
 [dependencies]
-# 上游前端与引擎：path 依赖，上游文件零改动。GridCraft 的 SheetApp 已把宿主缝直接暴露为
-# new(Session, Services) / setup_context / logic / raw_input_hook / ui / run / open_path，
-# 无需 patch 上游 ui-egui（与 solidcraft 的 SolveApp 同构）。
-gridcraft-ui-egui = { path = "../../../gridcraft/crates/ui-egui" }
-gridcraft-engine = { path = "../../../gridcraft/crates/engine" }
-# egui 0.37 / egui-wgpu 0.37：与 gridcraft 根 Cargo.toml 的 [patch] 同一 git fork rev，
-# 否则跨边界 egui 类型全对不上（与 solidcraft 0.36 的教训同源）。
+# 上游前端与引擎：path 依赖，上游文件零改动。
+# 注意：TextureCraft 的宿主缝 TextureCraftApp::new(cc: &eframe::CreationContext, ...) 与
+# impl eframe::App for TextureCraftApp 都绑死 eframe（与 gridcraft/vectorcraft 的纯 egui 宿主缝不同）。
+# 因此适配层必须引入 eframe 作为库依赖（提供 eframe::Frame / eframe::Storage / eframe::CreationContext 类型），
+# 但用精简 feature（wgpu_no_default_features，不开 wgpu 默认后端 / 不引 x11/wayland），
+# 渲染仍走 egui-wgpu 自管 GLES（见 render.rs），不用 eframe::run_native。
+texturecraft-ui-egui = { path = "../../../texturecraft/crates/ui-egui" }
+texturecraft-engine = { path = "../../../texturecraft/crates/engine" }
+# eframe：仅作类型与 eframe::App trait 依赖；关闭默认 features（去掉 x11/wayland/accesskit/links 等
+# 会引入 winit 后端的东西），只开 wgpu_no_default_features（拿 cc.wgpu_render_state）+ default_fonts + persistence。
+eframe = { version = "0.37", default-features = false, features = ["wgpu_no_default_features", "default_fonts", "persistence"] }
+# egui 0.37 / egui-wgpu 0.37：与 TextureCraft 根 Cargo.toml 的 [patch] 同一 git fork rev。
 egui = { version = "0.37", features = ["default_fonts"] }
 egui-wgpu = { version = "0.37" }
-# GLES/EGL 后端是鸿蒙 NDK 能直接用的那套；丢 gles 鸿蒙就没渲染后端（与 photocraft/solidcraft 同源教训）。
+# GLES/EGL 后端是鸿蒙 NDK 能直接用的那套；丢 gles 鸿蒙就没渲染后端。
 wgpu = { version = "30", default-features = false, features = ["std", "wgsl", "gles"] }
 pollster = "0.4"
 serde = { version = "1", features = ["derive"] }
@@ -28,18 +33,17 @@ log = "0.4"
 raw-window-handle = "0.6"
 libc = "0.2"
 
-# [patch] 只对 workspace 根生效；本适配层是独立 workspace，必须把 gridcraft 根 Cargo.toml 的
-# [patch.crates-io] 整段抄过来，再叠加 wgpu-hal 的鸿蒙 GLES 修补（沿用 solidcraft 验证过的 30.0.1）。
-# craft-libs（craft-ui/craft-update/craft-window/craft-pdf/krilla）在 gridcraft 各 crate 里是
-# 直接 git 依赖（非 workspace = true），Cargo 按其 manifest 的 git URL+rev 直接解析，故不在此 patch。
+# [patch] 只对 workspace 根生效；本适配层是独立 workspace，必须把 TextureCraft 根 Cargo.toml 的
+# [patch.crates-io] 整段抄过来（egui 全家桶 + winit fork），再叠加 wgpu-hal 的鸿蒙 GLES 修补。
+# craft-libs（craft-ui/craft-update/craft-window/craft-i18n/craft-tcraft/craft-mesh/craft-mcmat/
+# craft-dialogs/craft-keymap/craft-quit/craft-menu/craft-image-codecs/craft-usd/craft-materialx/
+# craft-zip）在 texturecraft 各 crate 里是直接 git 依赖，Cargo 按其 manifest 的 git URL+rev 直接解析。
 [patch.crates-io]
-# egui 全家桶与 winit：gridcraft 用的 fork，rev 必须与上游锁一致。
 ecolor = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 emath = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 epaint_default_fonts = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-egui-winit = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_glow = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_extras = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
@@ -48,8 +52,20 @@ egui_system_font_provider = { git = "https://github.com/storytold/egui.git", rev
 eframe = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_demo_lib = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
 egui_inspection = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
-winit = { git = "https://github.com/storytold/winit.git", rev = "a517b3846ee8457d84ee4975110bfda6797c44dc" }
-# wgpu-hal：鸿蒙 GLES 需 uniform-block 修补，沿用 solidcraft 验证过的同一 30.0.1，目录不存在即报错。
+# OHOS 适配层：winit / egui-winit 不支持 aarch64-unknown-linux-ohos（无平台后端）。
+# 用本地 type-only 桩替代：winit 提供 eframe 始终编译代码引用的少量类型；egui-winit 编译为空
+# （鸿蒙侧用 egui-wgpu + 自定义事件泵驱动渲染，不需要 winit 窗口/事件循环）。
+winit = { path = "../../third_party/winit-stub" }
+# wgpu-hal：鸿蒙 GLES 需 uniform-block 修补，沿用 gridcraft 验证过的 third_party 版本。
 wgpu-hal = { path = "../../third_party/wgpu-hal-30.0.1" }
+# egui-phosphor：crates.io 0.14 仅支持 egui 0.36，与本仓库 egui 0.37 fork 冲突（双份 epaint）。
+# TextureCraft 根 workspace 已把它指向 vendor 副本；本独立 workspace 需同样 patch。
+egui-phosphor = { path = "../../../texturecraft/vendor/egui-phosphor" }
+
+# egui-winit 在 egui git fork 的 workspace 内是 path 依赖（crates/egui-winit），
+# 因此它在该 build 里是 git 源，[patch.crates-io] 无法覆盖；必须用 git-URL patch 段
+# 指向本地空桩。winit 则从 crates.io 解析，故上面的 [patch.crates-io] winit 已生效。
+[patch."https://github.com/storytold/egui.git"]
+egui-winit = { path = "../../third_party/egui-winit-stub" }
 
 [workspace]

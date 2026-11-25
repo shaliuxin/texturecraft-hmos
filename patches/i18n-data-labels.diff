@@ -1,0 +1,75 @@
+diff --git a/crates/ui-egui/src/dock.rs b/crates/ui-egui/src/dock.rs
+index d831213..f09851a 100644
+--- a/crates/ui-egui/src/dock.rs
++++ b/crates/ui-egui/src/dock.rs
+@@ -2095,9 +2095,9 @@ fn brush_presets_popover(app: &mut TextureCraftApp, ui: &mut Ui) {
+             for preset in texturecraft_engine::paint::presets::PRESETS.iter() {
+                 if preset.category != category {
+                     category = preset.category;
+-                    ui.label(caption(category));
++                    ui.label(caption(tr(category)));
+                 }
+-                if ui.selectable_label(false, preset.label).on_hover_text(tr("Use this brush (keeps its size)")).clicked() {
++                if ui.selectable_label(false, tr(preset.label)).on_hover_text(tr("Use this brush (keeps its size)")).clicked() {
+                     app.run("brush.preset.apply", json!({"preset": preset.id}));
+                 }
+             }
+@@ -2598,7 +2598,7 @@ fn link_properties(app: &mut TextureCraftApp, ui: &mut Ui, layer: LayerId, link:
+         let mut group = "";
+         for p in &link.params {
+             if p.group != group && !p.group.is_empty() {
+-                ui.label(RichText::new(p.group.to_uppercase()).size(10.0).strong().color(tk.text_dim));
++                ui.label(RichText::new(tr(p.group.as_str()).to_uppercase()).size(10.0).strong().color(tk.text_dim));
+             }
+             group = &p.group;
+             if let Some(v) = link_param_editor(ui, layer, p)
+diff --git a/crates/ui-egui/src/shelf_entry.rs b/crates/ui-egui/src/shelf_entry.rs
+index 66774ef..655981d 100644
+--- a/crates/ui-egui/src/shelf_entry.rs
++++ b/crates/ui-egui/src/shelf_entry.rs
+@@ -124,17 +124,19 @@ impl ShelfEntry {
+         path.len() <= own.len() && path.iter().zip(own).all(|(wanted, have)| wanted == have)
+     }
+ 
+-    /// The name under the tile, translated where the asset's name is
++    /// The name under the tile, translated where the asset's name is. The built-in asset names
++    /// (materials, smart masks, brush presets, library alphas, lighting environments) are static
++    /// catalog keys, so they translate; user-saved brushes and project images are data and stay as-is.
+     pub(crate) fn label(&self) -> &str {
+         match self {
+-            ShelfEntry::Material(material) => material.label,
++            ShelfEntry::Material(material) => tr(material.label),
+             ShelfEntry::SavedBrush { name, .. } => name,
+-            ShelfEntry::SmartMask(mask) => mask.label,
++            ShelfEntry::SmartMask(mask) => tr(mask.label),
+             ShelfEntry::Filter(filter) => tr(filter.label),
+-            ShelfEntry::Brush(preset) => preset.label,
+-            ShelfEntry::Alpha(alpha) => &alpha.label,
++            ShelfEntry::Brush(preset) => tr(preset.label),
++            ShelfEntry::Alpha(alpha) => tr(alpha.label.as_str()),
+             ShelfEntry::Procedural(kind) => tr(kind.label()),
+-            ShelfEntry::Environment(name) => name,
++            ShelfEntry::Environment(name) => tr(name),
+             ShelfEntry::Image(name) => name,
+         }
+     }
+@@ -142,14 +144,14 @@ impl ShelfEntry {
+     /// Whether `filter` (lowercase) matches the asset's name, id or category, in English or translated
+     pub(crate) fn matches(&self, filter: &str) -> bool {
+         let texts: &[&str] = match self {
+-            ShelfEntry::Material(material) => &[material.label, material.category, material.id],
++            ShelfEntry::Material(material) => &[material.label, material.category, material.id, tr(material.label), tr(material.category)],
+             ShelfEntry::SavedBrush { .. } => &[self.label()],
+-            ShelfEntry::SmartMask(mask) => &[mask.label, mask.id],
++            ShelfEntry::SmartMask(mask) => &[mask.label, mask.id, tr(mask.label)],
+             ShelfEntry::Filter(filter) => &[filter.label, filter.group, filter.id, tr(filter.label), tr(filter.group)],
+-            ShelfEntry::Brush(preset) => &[preset.label, preset.category, preset.id],
+-            ShelfEntry::Alpha(alpha) => &[&alpha.label, alpha.category, &alpha.id],
++            ShelfEntry::Brush(preset) => &[preset.label, preset.category, preset.id, tr(preset.label), tr(preset.category)],
++            ShelfEntry::Alpha(alpha) => &[&alpha.label, alpha.category, &alpha.id, tr(alpha.label.as_str()), tr(alpha.category)],
+             ShelfEntry::Procedural(kind) => &[kind.label(), tr(kind.label())],
+-            ShelfEntry::Environment(name) => &[name],
++            ShelfEntry::Environment(name) => &[name, tr(name)],
+             ShelfEntry::Image(name) => &[name],
+         };
+         crate::shelf::matches(filter, texts)

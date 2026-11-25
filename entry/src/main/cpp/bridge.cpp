@@ -22,40 +22,40 @@
 
 // Called exclusively on the Rust render worker, after the surface is created/configured.
 // Read back the declaration so the editor never emits P3 into an untagged surface.
-extern "C" int32_t gc_set_window_color_space(void* window, bool p3) {
+extern "C" int32_t tc_set_window_color_space(void* window, bool p3) {
     auto* nativeWindow = static_cast<OHNativeWindow*>(window);
     const auto requested = p3 ? OH_COLORSPACE_P3_FULL : OH_COLORSPACE_SRGB_FULL;
     int32_t result = OH_NativeWindow_SetColorSpace(nativeWindow, requested);
     OH_NativeBuffer_ColorSpace actual = OH_COLORSPACE_NONE;
     if (result == 0) result = OH_NativeWindow_GetColorSpace(nativeWindow, &actual);
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft",
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft",
         "Native output requested %{public}d actual %{public}d result %{public}d",
         static_cast<int>(requested), static_cast<int>(actual), result);
-    return result != 0 ? result : (GridCraftOutputMatches(p3, actual) ? 0 : -1);
+    return result != 0 ? result : (TextureCraftOutputMatches(p3, actual) ? 0 : -1);
 }
 
 // Rust `log` crate 的出口：wgpu/wgpu-hal 的诊断（EGL 平台选择、surface 创建、swap 失败）
 // 只有接上 hilog 才能在设备上看到，否则 log::error! 会被静默丢弃。
-extern "C" void gc_hilog(int32_t level, const char* message) {
+extern "C" void tc_hilog(int32_t level, const char* message) {
     const LogLevel priority = level >= 2 ? LOG_ERROR : (level == 1 ? LOG_WARN : LOG_INFO);
-    OH_LOG_Print(LOG_APP, priority, 0xD001, "GridCraftGL", "%{public}s", message ? message : "");
+    OH_LOG_Print(LOG_APP, priority, 0xD001, "TextureCraftGL", "%{public}s", message ? message : "");
 }
 
 extern "C" {
 using Notify = void (*)(uint64_t,const uint8_t*,size_t,const uint8_t*,size_t);
-bool gc_init(const uint8_t*,size_t,Notify);
-void gc_attach(uintptr_t,uint32_t,uint32_t);
-void gc_resize(uint32_t,uint32_t);
-void gc_detach();
-void gc_frame();
-void gc_active(bool);
-void gc_close();
-void gc_input(const uint8_t*,size_t);
-void gc_reply(uint64_t,bool,const uint8_t*,size_t,const uint8_t*,size_t);
-void gc_open(const uint8_t*,size_t,const uint8_t*,size_t);
-void gc_drop_file(const uint8_t*,size_t,int32_t,float,float);
-void gc_drop(const uint8_t*,size_t,const uint8_t*,size_t,float,float);
-void gc_command(const uint8_t*,size_t);
+bool tc_init(const uint8_t*,size_t,Notify);
+void tc_attach(uintptr_t,uint32_t,uint32_t);
+void tc_resize(uint32_t,uint32_t);
+void tc_detach();
+void tc_frame();
+void tc_active(bool);
+void tc_close();
+void tc_input(const uint8_t*,size_t);
+void tc_reply(uint64_t,bool,const uint8_t*,size_t,const uint8_t*,size_t);
+void tc_open(const uint8_t*,size_t,const uint8_t*,size_t);
+void tc_drop_file(const uint8_t*,size_t,int32_t,float,float);
+void tc_drop(const uint8_t*,size_t,const uint8_t*,size_t,float,float);
+void tc_command(const uint8_t*,size_t);
 }
 namespace {
 std::mutex notifyMutex;
@@ -91,11 +91,11 @@ void CallJS(napi_env env, napi_value callback, void*, void* ptr) {
         napi_get_undefined(env, &receiver);
         if (napi_call_function(env, receiver, callback, 3, args, &result) != napi_ok && r->id) {
             const std::string error = "platform callback failed";
-            gc_reply(r->id, false, reinterpret_cast<const uint8_t*>(error.data()), error.size(), nullptr, 0);
+            tc_reply(r->id, false, reinterpret_cast<const uint8_t*>(error.data()), error.size(), nullptr, 0);
         }
     } else if (r->id) {
         const std::string error = "cancelled";
-        gc_reply(r->id, false, reinterpret_cast<const uint8_t*>(error.data()), error.size(), nullptr, 0);
+        tc_reply(r->id, false, reinterpret_cast<const uint8_t*>(error.data()), error.size(), nullptr, 0);
     }
     delete r;
 }
@@ -103,16 +103,16 @@ void NotifyRust(uint64_t id, const uint8_t* json, size_t n, const uint8_t* data,
     // The Rust worker never calls JS directly; platform requests travel through a thread-safe queue.
     auto* r = new Request{id, std::string(reinterpret_cast<const char*>(json), n), {}};
     if (r->json.find("\"kind\":\"ime\"") == std::string::npos)
-        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Rust notification %{public}s", r->json.c_str());
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Rust notification %{public}s", r->json.c_str());
     if (size) r->data.assign(data, data + size);
     std::lock_guard<std::mutex> lock(notifyMutex);
     if (!notifyFn || napi_call_threadsafe_function(notifyFn, r, napi_tsfn_nonblocking) != napi_ok) {
         delete r;
-        if (id) { const std::string error = "cancelled"; gc_reply(id, false, reinterpret_cast<const uint8_t*>(error.data()), error.size(), nullptr, 0); }
+        if (id) { const std::string error = "cancelled"; tc_reply(id, false, reinterpret_cast<const uint8_t*>(error.data()), error.size(), nullptr, 0); }
     }
 }
 // VSync only fires a frame; egui updates and GPU drawing still run serially on the Rust worker.
-void Vsync(long long, void*) { framePending = false; if (attached) gc_frame(); }
+void Vsync(long long, void*) { framePending = false; if (attached) tc_frame(); }
 std::string String(napi_env env, napi_value v) {
     size_t len = 0;
     if (!v || napi_get_value_string_utf8(env, v, nullptr, 0, &len) != napi_ok || len > 1024 * 1024) return {};
@@ -122,7 +122,7 @@ std::string String(napi_env env, napi_value v) {
 }
 napi_value Undefined(napi_env env) { napi_value v; napi_get_undefined(env, &v); return v; }
 void Json(const std::string& s) {
-    gc_input(reinterpret_cast<const uint8_t*>(s.data()), s.size());
+    tc_input(reinterpret_cast<const uint8_t*>(s.data()), s.size());
 }
 // 诊断专用：绕过 EGL，直接向 NativeWindow 写一整帧纯绿。
 // 用来把"内容不上屏"分离成 NativeWindow 通路问题 或 EGL/wgpu 问题。
@@ -131,18 +131,18 @@ static void SelfTestFillGreen(OHNativeWindow* w, uint32_t width, uint32_t height
     int fenceFd = -1;
     int32_t rc = OH_NativeWindow_NativeWindowRequestBuffer(w, &buffer, &fenceFd);
     if (rc != 0 || buffer == nullptr) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "GridCraft", "selftest request failed rc=%{public}d", rc);
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "TextureCraft", "selftest request failed rc=%{public}d", rc);
         return;
     }
     BufferHandle* handle = OH_NativeWindow_GetBufferHandleFromNative(buffer);
     if (handle == nullptr || handle->size <= 0 || handle->fd < 0) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "GridCraft", "selftest no usable handle");
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "TextureCraft", "selftest no usable handle");
         OH_NativeWindow_NativeWindowAbortBuffer(w, buffer);
         return;
     }
     void* base = mmap(nullptr, static_cast<size_t>(handle->size), PROT_READ | PROT_WRITE, MAP_SHARED, handle->fd, 0);
     if (base == MAP_FAILED) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "GridCraft", "selftest mmap failed");
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "TextureCraft", "selftest mmap failed");
         OH_NativeWindow_NativeWindowAbortBuffer(w, buffer);
         return;
     }
@@ -152,7 +152,7 @@ static void SelfTestFillGreen(OHNativeWindow* w, uint32_t width, uint32_t height
     munmap(base, static_cast<size_t>(handle->size));
     Region region{nullptr, 0};
     rc = OH_NativeWindow_NativeWindowFlushBuffer(w, buffer, fenceFd, region);
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft",
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft",
         "selftest flush rc=%{public}d buffer %{public}dx%{public}d stride %{public}d size %{public}d format %{public}d want %{public}u x %{public}u",
         rc, handle->width, handle->height, handle->stride, handle->size, handle->format,
         width, height);
@@ -160,22 +160,22 @@ static void SelfTestFillGreen(OHNativeWindow* w, uint32_t width, uint32_t height
 
 void SurfaceCreated(OH_NativeXComponent* c, void* window) {
     auto* state = Enter(c);
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Surface created window=%{public}u", state ? state->key : 0u);
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Surface created window=%{public}u", state ? state->key : 0u);
     if (!state) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "GridCraft",
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "TextureCraft",
             "SurfaceCreated with no WinState (registerWindow missing or too late)");
         return;
     }
     uint64_t w = 0, h = 0;
     if (!window || OH_NativeXComponent_GetXComponentSize(c, window, &w, &h) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "GridCraft", "SurfaceCreated size failed window=%{public}u", state->key);
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "TextureCraft", "SurfaceCreated size failed window=%{public}u", state->key);
         return;
     }
     auto ref = OH_NativeWindow_NativeObjectReference(window);
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Window %{public}llu x %{public}llu reference %{public}d key=%{public}u",
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Window %{public}llu x %{public}llu reference %{public}d key=%{public}u",
         static_cast<unsigned long long>(w), static_cast<unsigned long long>(h), ref, state->key);
     if (ref != 0) {
-        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "GridCraft", "NativeObjectReference failed %{public}d key=%{public}u", ref, state->key);
+        OH_LOG_Print(LOG_APP, LOG_ERROR, 0xD001, "TextureCraft", "NativeObjectReference failed %{public}d key=%{public}u", ref, state->key);
         return;
     }
     // EGL swaps into whatever geometry the NativeWindow advertises. The XComponent surface arrives
@@ -187,7 +187,7 @@ void SurfaceCreated(OH_NativeXComponent* c, void* window) {
     OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, GET_BUFFER_GEOMETRY, &geoBefore[0], &geoBefore[1]);
     int32_t geoSet = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_BUFFER_GEOMETRY,
         static_cast<int32_t>(w), static_cast<int32_t>(h));
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft",
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft",
         "Native window geometry before %{public}d x %{public}d, set %{public}llu x %{public}llu rc %{public}d",
         geoBefore[0], geoBefore[1], static_cast<unsigned long long>(w),
         static_cast<unsigned long long>(h), geoSet);
@@ -198,32 +198,32 @@ void SurfaceCreated(OH_NativeXComponent* c, void* window) {
     if ((usageBefore & NATIVEBUFFER_USAGE_HW_RENDER) == 0) {
         const uint64_t want = usageBefore | NATIVEBUFFER_USAGE_HW_RENDER | NATIVEBUFFER_USAGE_HW_TEXTURE;
         const int32_t usageRc = OH_NativeWindow_NativeWindowHandleOpt(nativeWindow, SET_USAGE, want);
-        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft",
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft",
             "Native window usage 0x%{public}llx -> 0x%{public}llx rc %{public}d",
             static_cast<unsigned long long>(usageBefore), static_cast<unsigned long long>(want), usageRc);
     } else {
-        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft",
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft",
             "Native window usage 0x%{public}llx already supports HW_RENDER",
             static_cast<unsigned long long>(usageBefore));
     }
     // 诊断开关：需要单独验证 NativeWindow 通路时取消下行注释（会与 EGL 抢 buffer）。
     // SelfTestFillGreen(nativeWindow, static_cast<uint32_t>(w), static_cast<uint32_t>(h));
     attached = true;
-    gc_attach(reinterpret_cast<uintptr_t>(window), static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+    tc_attach(reinterpret_cast<uintptr_t>(window), static_cast<uint32_t>(w), static_cast<uint32_t>(h));
 }
 void SurfaceChanged(OH_NativeXComponent* c, void* window) {
     auto* state = Enter(c);
     if (!state) return;
     uint64_t w = 0, h = 0;
     if (OH_NativeXComponent_GetXComponentSize(c, window, &w, &h) != OH_NATIVEXCOMPONENT_RESULT_SUCCESS) return;
-    gc_resize(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+    tc_resize(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
 }
 void SurfaceDestroyed(OH_NativeXComponent* c, void*) {
     auto* state = Enter(c);
     if (!state) return;
     state->touchId = -1;
     attached = false;
-    gc_detach();
+    tc_detach();
 }
 void Touch(OH_NativeXComponent* c, void* window) {
     auto* state = Enter(c);
@@ -348,7 +348,7 @@ bool RegisterComponent(OH_NativeXComponent* c, uint32_t explicit_key) {
             it->second->key = key;
         }
     }
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft",
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft",
         "Registering XComponent callbacks id=%{public}s window=%{public}u explicit=%{public}u", id, key, explicit_key);
     OH_NativeXComponent_RegisterCallback(c, &callbacks);
     OH_NativeXComponent_RegisterMouseEventCallback(c, &mouseCallbacks);
@@ -358,23 +358,23 @@ bool RegisterComponent(OH_NativeXComponent* c, uint32_t explicit_key) {
     return true;
 }
 napi_value InitHost(napi_env env, napi_callback_info info) {
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Initializing Rust host");
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Initializing Rust host");
     size_t n = 2; napi_value args[2]; napi_get_cb_info(env, info, &n, args, nullptr, nullptr);
     if (n != 2) return Undefined(env);
     auto config = String(env, args[0]);
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Config %{public}s", config.c_str());
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Config %{public}s", config.c_str());
     {
         std::lock_guard<std::mutex> lock(notifyMutex);
         if (notifyFn) napi_release_threadsafe_function(notifyFn, napi_tsfn_abort);
-        napi_value name; napi_create_string_utf8(env, "GridCraft platform", NAPI_AUTO_LENGTH, &name);
+        napi_value name; napi_create_string_utf8(env, "TextureCraft platform", NAPI_AUTO_LENGTH, &name);
         auto status = napi_create_threadsafe_function(env, args[1], nullptr, name, 0, 1, nullptr, nullptr, nullptr, CallJS, &notifyFn);
-        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "TSFN status %{public}d", static_cast<int>(status));
+        OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "TSFN status %{public}d", static_cast<int>(status));
         if (status != napi_ok) return Undefined(env);
         napi_unref_threadsafe_function(env, notifyFn);
     }
-    if (!vsync) vsync = OH_NativeVSync_Create("GridCraft", 10);
-    bool started = gc_init(reinterpret_cast<const uint8_t*>(config.data()), config.size(), NotifyRust);
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Rust started %{public}d", started);
+    if (!vsync) vsync = OH_NativeVSync_Create("TextureCraft", 10);
+    bool started = tc_init(reinterpret_cast<const uint8_t*>(config.data()), config.size(), NotifyRust);
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Rust started %{public}d", started);
     if (!started) {
         const std::string json = "{\"kind\":\"error\",\"text\":\"Native configuration failed\"}";
         NotifyRust(0, reinterpret_cast<const uint8_t*>(json.data()), json.size(), nullptr, 0);
@@ -389,7 +389,7 @@ napi_value Input(napi_env env, napi_callback_info info) {
 }
 napi_value Command(napi_env env, napi_callback_info info) {
     size_t n = 1; napi_value arg; napi_get_cb_info(env, info, &n, &arg, nullptr, nullptr);
-    if (n) { auto s = String(env, arg); gc_command(reinterpret_cast<const uint8_t*>(s.data()), s.size()); }
+    if (n) { auto s = String(env, arg); tc_command(reinterpret_cast<const uint8_t*>(s.data()), s.size()); }
     return Undefined(env);
 }
 napi_value Reply(napi_env env, napi_callback_info info) {
@@ -398,14 +398,14 @@ napi_value Reply(napi_env env, napi_callback_info info) {
     double id = 0; bool ok = false; void* data = nullptr; size_t size = 0;
     napi_get_value_double(env, args[0], &id); napi_get_value_bool(env, args[1], &ok);
     auto text = String(env, args[2]); napi_get_arraybuffer_info(env, args[3], &data, &size);
-    gc_reply(static_cast<uint64_t>(id), ok, reinterpret_cast<const uint8_t*>(text.data()), text.size(), static_cast<uint8_t*>(data), size);
+    tc_reply(static_cast<uint64_t>(id), ok, reinterpret_cast<const uint8_t*>(text.data()), text.size(), static_cast<uint8_t*>(data), size);
     return Undefined(env);
 }
 napi_value Open(napi_env env, napi_callback_info info) {
     size_t n = 2; napi_value args[2]; napi_get_cb_info(env, info, &n, args, nullptr, nullptr);
     if (n != 2) return Undefined(env);
     auto name = String(env, args[0]); void* data = nullptr; size_t size = 0; napi_get_arraybuffer_info(env, args[1], &data, &size);
-    gc_open(reinterpret_cast<const uint8_t*>(name.data()), name.size(), static_cast<uint8_t*>(data), size);
+    tc_open(reinterpret_cast<const uint8_t*>(name.data()), name.size(), static_cast<uint8_t*>(data), size);
     return Undefined(env);
 }
 napi_value DropFile(napi_env env, napi_callback_info info) {
@@ -415,7 +415,7 @@ napi_value DropFile(napi_env env, napi_callback_info info) {
     if (napi_get_value_int32(env, args[1], &fd) != napi_ok || napi_get_value_double(env, args[2], &x) != napi_ok ||
         napi_get_value_double(env, args[3], &y) != napi_ok) return Undefined(env);
     auto name = String(env, args[0]);
-    gc_drop_file(reinterpret_cast<const uint8_t*>(name.data()), name.size(), fd, static_cast<float>(x), static_cast<float>(y));
+    tc_drop_file(reinterpret_cast<const uint8_t*>(name.data()), name.size(), fd, static_cast<float>(x), static_cast<float>(y));
     return Undefined(env);
 }
 napi_value Drop(napi_env env, napi_callback_info info) {
@@ -424,21 +424,21 @@ napi_value Drop(napi_env env, napi_callback_info info) {
     auto name = String(env, args[0]); void* data = nullptr; size_t size = 0; double x = 0, y = 0;
     if (napi_get_arraybuffer_info(env, args[1], &data, &size) != napi_ok ||
         napi_get_value_double(env, args[2], &x) != napi_ok || napi_get_value_double(env, args[3], &y) != napi_ok) return Undefined(env);
-    gc_drop(reinterpret_cast<const uint8_t*>(name.data()), name.size(), static_cast<uint8_t*>(data), size, static_cast<float>(x), static_cast<float>(y));
+    tc_drop(reinterpret_cast<const uint8_t*>(name.data()), name.size(), static_cast<uint8_t*>(data), size, static_cast<float>(x), static_cast<float>(y));
     return Undefined(env);
 }
 napi_value Active(napi_env env, napi_callback_info info) {
     size_t n = 1; napi_value arg; bool active = false; napi_get_cb_info(env, info, &n, &arg, nullptr, nullptr);
-    if (n) napi_get_value_bool(env, arg, &active); gc_active(active); return Undefined(env);
+    if (n) napi_get_value_bool(env, arg, &active); tc_active(active); return Undefined(env);
 }
-napi_value Close(napi_env env, napi_callback_info) { gc_close(); return Undefined(env); }
+napi_value Close(napi_env env, napi_callback_info) { tc_close(); return Undefined(env); }
 void Cleanup(void*) {
-    attached = false; gc_active(false); gc_detach();
+    attached = false; tc_active(false); tc_detach();
     std::lock_guard<std::mutex> lock(notifyMutex);
     if (notifyFn) { napi_release_threadsafe_function(notifyFn, napi_tsfn_abort); notifyFn = nullptr; }
 }
 napi_value Init(napi_env env, napi_value exports) {
-    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "GridCraft", "Loading NAPI module");
+    OH_LOG_Print(LOG_APP, LOG_INFO, 0xD001, "TextureCraft", "Loading NAPI module");
     const napi_property_descriptor props[] = {
         {"init", nullptr, InitHost, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"input", nullptr, Input, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -459,13 +459,13 @@ napi_value Init(napi_env env, napi_value exports) {
     napi_add_env_cleanup_hook(env, Cleanup, nullptr);
     return exports;
 }
-napi_module module{1, 0, nullptr, Init, "gridcraft", nullptr, {0}};
+napi_module module{1, 0, nullptr, Init, "texturecraft", nullptr, {0}};
 }
 
-extern "C" void gc_request_vsync() {
+extern "C" void tc_request_vsync() {
     if (vsync && attached && !framePending.exchange(true)) {
         if (OH_NativeVSync_RequestFrame(vsync, Vsync, nullptr) != 0) framePending = false;
     }
 }
 
-extern "C" __attribute__((constructor)) void RegisterGridCraft() { napi_module_register(&module); }
+extern "C" __attribute__((constructor)) void RegisterTextureCraft() { napi_module_register(&module); }

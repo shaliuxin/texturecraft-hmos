@@ -1,26 +1,21 @@
 {
   "UniformDataTypeDeclarations": [
     {
-      "TypeId": "io.github.shaliuxin.gridcraft.hmos.xlsx",
+      "TypeId": "io.github.shaliuxin.texturecraft.hmos.tcraft",
       "BelongingToTypes": [
         "general.file"
       ],
       "FilenameExtensions": [
-        ".xlsx",
-        ".xlsm",
-        ".xls",
-        ".ods",
-        ".csv",
-        ".tsv"
+        ".gltf",
+        ".glb",
+        ".tcraft"
       ],
       "MIMETypes": [
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/vnd.ms-excel",
-        "application/vnd.oasis.opendocument.spreadsheet",
-        "text/csv",
-        "text/tab-separated-values"
+        "model/gltf+json",
+        "model/gltf-binary",
+        "application/octet-stream"
       ],
-      "Description": "GridCraft spreadsheet",
+      "Description": "TextureCraft 3D texture project",
       "ReferenceURL": ""
     }
   ]

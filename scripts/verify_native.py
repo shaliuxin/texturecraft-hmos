@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the packaged native ABIs and ensure the HAP contains no web runtime snapshot.
 
-Mirrors photocraft-hmos' verify_native.py but uses GridCraft's library/bundle names.
+Mirrors photocraft-hmos' verify_native.py but uses TextureCraft's library/bundle names.
 """
 import argparse
 import json
@@ -15,7 +15,8 @@ NATIVE_PAGES = ['pages/Index']
 # and the mapping in entry/src/main/cpp/CMakeLists.txt.
 ELF_MACHINE = {'arm64-v8a': 183, 'x86_64': 62, 'armeabi-v7a': 40}
 DEFAULT_ABIS = ['arm64-v8a', 'x86_64']
-LIB_NAME = 'libgridcraft.so'
+LIB_NAME = 'libtexturecraft.so'
+DEFAULT_BUNDLE = 'io.github.shaliuxin.texturecraft.hmos'
 
 
 def verify(path: Path, expected_bundle: str | None = None,
@@ -58,4 +59,4 @@ if __name__ == '__main__':
     parser.add_argument('--abis', nargs='+', metavar='ABI',
                         help=f'ABIs the HAP must contain (default: {" ".join(DEFAULT_ABIS)})')
     args = parser.parse_args()
-    verify(args.hap, args.expected_bundle, args.abis)
+    verify(args.hap, args.expected_bundle or DEFAULT_BUNDLE, args.abis)

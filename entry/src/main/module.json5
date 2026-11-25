@@ -34,7 +34,9 @@
             "uris": [
               {"scheme": "file", "type": "general.png", "linkFeature": "FileOpen"},
               {"scheme": "file", "type": "general.jpeg", "linkFeature": "FileOpen"},
-              {"scheme": "file", "type": "io.github.shaliuxin.gridcraft.hmos.xlsx", "linkFeature": "FileOpen"}
+              {"scheme": "file", "type": "model.gltf", "linkFeature": "FileOpen"},
+              {"scheme": "file", "type": "model.glb", "linkFeature": "FileOpen"},
+              {"scheme": "file", "type": "io.github.shaliuxin.texturecraft.hmos.tcraft", "linkFeature": "FileOpen"}
             ]
           }
         ]

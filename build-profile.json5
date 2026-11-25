@@ -1,20 +1,21 @@
 {
-  // ── 占位符版本（公开仓库用）──────────────────────────────────────────────
-  // 真实的签名材料路径 / 口令 hex 属于本机私有信息，不入库：
-  //   本机真实配置另存为 signing/build-profile.local.json5（signing/ 已被 .gitignore 屏蔽）。
-  //   scripts/run_on_device.sh 在打包前会自动把它还原成本文件，本地构建无需手动操作。
+  // 包名铁律：texturecraft 用专属 bundleName io.github.shaliuxin.texturecraft.hmos，
+  // 其签名 profile（.p7b）绑定 bundleName + 设备 UDID，绝不复用 gridcraft/其它 craft 的产物。
   //
-  // 首次使用请任选其一生成自己的签名配置：
-  //   A) DevEco Studio → File → Project Structure → Signing Configs → 勾选自动签名，
-  //      用 bundleName io.github.shaliuxin.gridcraft.hmos 生成绑定本机设备 UDID 的调试 Profile，
-  //      DevEco 会自动回写 material 四件套到本文件（回写后请本地备份，勿提交）。
-  //   B) 纯命令行自测：bash scripts/make_gridcraft_signing.sh 生成 signing/ 下本地 CA 链
-  //      （issuer=pki_internal，仅能验证打包链路；真机安装会报 9568257）。
-  //
-  // 包名铁律：bundleName 绑定 profile 与设备 UDID，上架后永久不可改；
-  // 切勿借用其它 craft 工程的 profile（会与该包名旧版撞车，报 9568263 版本降级）。
-  // ────────────────────────────────────────────────────────────────────────
+  // ⚠ 待重生（移植自 gridcraft 骨架，material 仍是 gridcraft 包名的 DevEco 材料，绑定旧 bundleName，
+  // 直接打包会因 bundleName 与 profile 不匹配而失败 / 报 9568263 版本降级）：
+  //   请在 DevEco Studio「File → Project Structure → Signing Configs」勾选自动签名，
+  //   用 bundleName io.github.shaliuxin.texturecraft.hmos 重新签发绑定本机 UDID 的调试 profile，
+  //   DevEco 会把它回写到本文件的 material 四件套（certpath/profile/storeFile + 口令 hex）。
+  //   或纯命令行自测：bash scripts/make_texturecraft_signing.sh 生成 signing/ 下本地 CA 链
+  //   （issuer=pki_internal，仅验证打包链路，真机安装报 9568257）——注意其 bundle-name 已是 texturecraft。
+  // hvigor DecipherUtil 用 storeFile 同级目录的 material/ 解密，不是 ~/.ohos/config/material。
   "app": {
+    // 占位符版本（公开仓库用）：真实签名材料不入库。
+    // 本机真实配置另存为 signing/build-profile.local.json5（signing/ 已被 .gitignore 屏蔽），
+    // scripts/run_on_device.sh 在打包前会自动还原成本地真实配置。
+    // 首次使用请在 DevEco Studio「File → Project Structure → Signing Configs」勾选自动签名，
+    // 用 bundleName io.github.shaliuxin.texturecraft.hmos 生成绑定本机 UDID 的调试 Profile。
     "signingConfigs": [],
     "products": [
       {
@@ -35,7 +36,7 @@
     ],
     "capabilities": [
       {
-        "bundleName": "io.github.shaliuxin.gridcraft.hmos",
+        "bundleName": "io.github.shaliuxin.texturecraft.hmos",
         "config": []
       }
     ]

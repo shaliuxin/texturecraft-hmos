@@ -1,0 +1,21 @@
+[package]
+name = "winit"
+# Must match the winit fork version (0.30.13) so the adapter's
+# `[patch.crates-io]` can override the git fork for the OHOS target.
+version = "0.30.13"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# OHOS has no winit runtime backend (the ArkTS/C++ NAPI side drives the event
+# loop and rendering through egui-wgpu). This stub exposes ONLY the type surface
+# that eframe's always-compiled (non-winit-runtime) code references, so that
+# `impl eframe::App` / `eframe::CreationContext` / `eframe::Frame` type-check on
+# `aarch64-unknown-linux-ohos`. No runtime behavior; methods are `unimplemented!`.
+
+[lib]
+name = "winit"
+
+[features]
+default = []
+rwh_06 = []
