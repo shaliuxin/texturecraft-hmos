@@ -1247,3 +1247,54 @@
 	Aligned	已对齐
 	Not aligned: every stroke starts at the source. V + click sets a new source.	未对齐：每一笔都从源点起笔。V+单击设定新源点。
 	On: the offset from the first stroke is kept. Off: every stroke starts at the source point.	开启：保留与第一笔的偏移。关闭：每一笔都从源点起笔。
+	Select a 3D mesh first	请先选择一个 3D 网格
+	The mesh file to paint. Create is available once one is selected.	用于绘制其上的网格文件。选中一个后方可创建。
+	No file selected	未选择文件
+	Templates set the starting channels, resolution, normal map format and shader settings.	模板设定初始通道、分辨率、法线贴图格式与着色器设置。
+	Document resolution (px)	文档分辨率（px）
+	The texture size of every texture set. It can be changed later.	每个纹理集的贴图尺寸，之后可改。
+	Green channel convention of normal maps: OpenGL (Y+) or DirectX (Y-). Imported and exported normal maps follow it.	法线贴图的绿色通道约定：OpenGL（Y+）或 DirectX（Y-）。导入和导出的法线贴图都遵循它。
+	UV Tile settings (UDIMs)	UV 平铺设置（UDIM）
+	Paint meshes whose UVs span several UV tiles (UDIMs)	绘制 UV 跨越多个 UV 平铺（UDIM）的网格
+	You can enable or disable UV tiles later in Texture Set Settings.	之后可在“纹理集设置”中启用或关闭 UV 平铺。
+	Use UV Tile workflow	使用 UV 平铺工作流
+	Tick Use UV Tile workflow first	请先勾选“使用 UV 平铺工作流”
+	Import settings	导入设置
+	Keep the cameras stored in the mesh file	保留网格文件中存储的摄像机
+	Import cameras	导入摄像机
+	Import mesh normal maps and baked maps for all materials.	为所有材质导入网格法线贴图和烘焙贴图。
+	Add	添加
+	Normal map filename: <texture set>_normal	法线贴图文件名：<纹理集>_normal
+	Compute the tangent space of normal maps per pixel instead of per vertex	逐像素而非逐顶点计算法线贴图的切空间
+	Compute tangent space per fragment	逐片元计算切空间
+	Each material keeps its UV tiles in one texture set, and strokes paint across tiles	每个材质将其 UV 平铺保留在同一个纹理集中，笔触可跨平铺绘制
+	Keep UV tiles together per material	每个材质的 UV 平铺归并为一组
+	Each UV tile becomes a texture set of its own	每个 UV 平铺各自成为一个纹理集
+	Use a separate texture set for each tile	为每个平铺使用独立的纹理集
+	Generate UVs for meshes that have none	为没有 UV 的网格生成 UV
+	Auto-unwrap	自动展 UV
+	Auto-unwrap options	自动展 UV 选项
+	Physical size	物理尺寸
+	The real-world size of one unit of the mesh	网格中一个单位的现实尺寸
+	Use the unit scale stored in the mesh file	使用网格文件中存储的单位比例
+	Use the mesh file’s unit scale	使用网格文件的单位比例
+	Set the size of one unit yourself	自行设定一个单位的尺寸
+	Custom unit scale	自定义单位比例
+	1 unit =	1 单位 =
+	cm	厘米
+	Fill layers of applied materials are scaled in physical size instead of UV space	所施材质的填充图层按物理尺寸而非 UV 空间缩放
+	Scale material fills in real-world units	按现实单位缩放材质填充
+	Color management	色彩管理
+	Configuration	配置
+	Legacy works in linear sRGB. OpenColorIO manages color through a configuration	旧模式在线性 sRGB 下工作；OpenColorIO 通过配置管理色彩
+	Configuration file	配置文件
+	A custom OpenColorIO configuration file	自定义的 OpenColorIO 配置文件
+	Color settings	色彩设置
+	Working color space	工作色彩空间
+	The color space layers are blended in	图层在其中混合的色彩空间
+	Standard sRGB color space	标准 sRGB 色彩空间
+	The color space of sRGB images and colors	sRGB 图像和颜色的色彩空间
+	Bitmap import color space defaults	位图导入的色彩空间默认值
+	Material color space default	材质色彩空间默认值
+	The color space of material inputs that do not state one	未声明色彩空间的材质输入所用的色彩空间
+	Export color spaces	导出色彩空间

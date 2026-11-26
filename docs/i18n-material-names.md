@@ -116,6 +116,18 @@ key 不在 UI `TABLE` 里，`gen_i18n_tsv.py` 也未收录，于是 `tr()` 回�
 zh-Hans 数据条目 178 → 218；因 craft-i18n 按 source casefold 去重，与 UI `TABLE`
 撞车的 key（如 `Parameters`）以 UI 条目优先，不触发 "defined twice"。
 
+### 新建项目对话框文案（`new_project_advanced.rs` + `project_form.rs`）
+
+第三轮排查发现：`File > New`（新建项目）高级对话框与项目表单里的若干 `tr()`/`trf()` 文案
+（如「未选择文件」「文档分辨率」「色彩管理」「自动展 UV」「UV 平铺设置（UDIM）」「导入设置」
+「物理尺寸」等）其 key 既不在 UI `TABLE` 也不在 `ZH` 字典，于是 `tr()` 回退英文。
+
+修复：在 `gen_i18n_tsv.py` 的 `ZH` 字典新增两个分区——
+- 「新建项目对话框」（`crates/ui-egui/src/new_project_advanced.rs`）
+- 「项目表单辅助」（`crates/ui-egui/src/project_form.rs`：切空间 / 物理尺寸 / 材质通道说明等）
+共补 52 条简体中文译文。zh-Hans 数据条目 218 → 269；无源串以 `...` 结尾，省略号铁律不适用；
+生成器 `check_all()` 无 "defined twice" / 省略号报错。
+
 ---
 
 ## 四、同步到上游的操作清单
@@ -137,5 +149,8 @@ zh-Hans 数据条目 178 → 218；因 craft-i18n 按 source casefold 去重，�
 ## 五、产物
 
 - `patches/i18n-data-labels.diff` —— 代码侧修复补丁（`shelf_entry.rs` + `dock.rs`，4.6 KB）。
-- `scripts/gen_i18n_tsv.py` —— TSV 生成器（含数据标签翻译表）。
-- `locales/<code>/texturecraft.tsv` —— 9 语种 catalog（zh-Hans 1231 行）。
+- `scripts/gen_i18n_tsv.py` —— TSV 生成器（含数据标签翻译表：材质/遮罩/笔刷/Alpha/环境 +
+  属性面板 39 条 + 新建对话框 52 条）。
+- `locales/<code>/texturecraft.tsv` —— 9 语种 catalog（zh-Hans 1053 UI + 269 数据标签，
+  去重后 1300 行；`gen_i18n_tsv.py` 当前输出：`zh-Hans: 1053 UI + 269 data entries`，
+  合计 9 语种 9764 条）。

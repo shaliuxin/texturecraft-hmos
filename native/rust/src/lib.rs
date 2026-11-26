@@ -400,12 +400,28 @@ fn worker(config: Config, rx: mpsc::Receiver<Message>) {
         &[],
     );
 
-    // TextureCraft 的 session：空工程态（无项目打开）。新工程由 UI 或 `file.new` 命令创建。
-    let session = match texturecraft_engine::Session::closed() {
+    // TextureCraft 的 session：起始载入一个内置「材质球」示例工程（等同桌面端 `--control`/
+    // `project.sample` 路径），使资产架里的材质球有纹理集可落——空工程态下点击材质球会因
+    // `apply_at` 取 `texture_set(0)` 失败而弹「no texture set 0」错误 toast（桌面交互态也是空态，
+    // 但移动端资产架常驻可见，故一开机就必然报错）。1024 分辨率对移动端 GLES 内存更友好。
+    // 示例工程创建失败时回退到空工程态，不阻断启动。
+    let session = match texturecraft_engine::Session::new_project(
+        "Untitled",
+        texturecraft_engine::geom::primitives::material_ball(),
+        "builtin:material_ball",
+        None,
+        1024,
+    ) {
         Ok(session) => session,
         Err(e) => {
-            bridge::notify(0, "error", &format!("session: {e}"), &[]);
-            return;
+            bridge::notify(0, "diagnostic", &format!("sample project failed, using empty session: {e}"), &[]);
+            match texturecraft_engine::Session::closed() {
+                Ok(session) => session,
+                Err(e) => {
+                    bridge::notify(0, "error", &format!("session: {e}"), &[]);
+                    return;
+                }
+            }
         }
     };
 
@@ -415,6 +431,13 @@ fn worker(config: Config, rx: mpsc::Receiver<Message>) {
     // 起始 render_state 为 None：attach 时再绑定 GLES 并回填。3D 视口在 GLES 上由上游
     // `device_supports_tracing` 优雅降级——v1 不要求 3D 跑通，只要求 2D 主 UI 渲染。
     let mut app = TextureCraftApp::new_for_host(&ctx, None, Some(&storage), session);
+
+    // 文件对话框桥接：鸿蒙无原生窗口驱动 craft-dialogs 的原生路径，故登记一个 override，把每个
+    // 文件请求经 `bridge::request` 交给 ArkTS 的系统 picker（pickDocument 把选中文件复制进沙箱
+    // `.inbox` 后回传路径），使「文件 > 打开」等菜单可用。每帧末经 `drain_override` 排空队列
+    // （override 会阻塞等 picker 应答，与原生模态对话框同）。Save/Folder 首版安全降级为取消。
+    app.file_dialogs
+        .set_override(Some(Box::new(|req| bridge::file_dialog_answer(req))));
 
     // 界面语言：默认「跟随系统」（i18n::SYSTEM_LANGUAGE == ""，经 locale::install 写好的 LANG 解析）。
     // 优先用 config.language（ArkTS 的 getSystemLanguage），映射不到则用 config.system_locale
@@ -710,12 +733,16 @@ fn editor_frame(
 ) -> egui::FullOutput {
     // 与上游宿主一致：每个 pass 的首拍都推进一次 `logic_host`（内含逐帧 tick），随后把 `ui_host`
     // 画进 CentralPanel。只跑首帧会让界面停摆。
-    ctx.run_ui(raw, |ui| {
+    let output = ctx.run_ui(raw, |ui| {
         if ui.ctx().current_pass_index() == 0 {
             app.logic_host(ui.ctx());
         }
         app.ui_host(ui);
-    })
+    });
+    // 排空文件对话框队列：`ui_host` 里用户点「打开」只把请求入队（鸿蒙 `show_pending` 被 cfg 排除），
+    // 此处经 override → `bridge::request` 阻塞等 ArkTS picker 应答，下一帧 `logic_host` 取答案跑 then。
+    app.file_dialogs.drain_override::<bridge::DialogWindow>();
+    output
 }
 
 /// 把鸿蒙系统 CJK 字体以 `FontPriority::Lowest` 追加到所有字体族（best-effort）。
