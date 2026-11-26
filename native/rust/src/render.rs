@@ -50,6 +50,8 @@ fn depth_format() -> wgpu::TextureFormat {
 }
 
 /// 清屏用的远平面深度值：24 位定点缓冲不是逆深度（深度范围 [0,1]，远平面即 1.0）。
+/// 保留供将来 3D 离屏通道清屏；egui 主通道已不带深度附件，故此处暂不被调用。
+#[allow(dead_code)]
 fn far_depth() -> f32 {
     if matches!(depth_format(), wgpu::TextureFormat::Depth32Float | wgpu::TextureFormat::Depth32FloatStencil8) {
         0.0
@@ -150,8 +152,14 @@ impl GpuRender {
             config.format,
             egui_wgpu::RendererOptions {
                 msaa_samples: 1,
-                // 与上面创建的深度附件同格式：egui 自己的管线也声明这份 depth-stencil 状态。
-                depth_stencil_format: Some(depth_format()),
+                // TextureCraft 的 3D 视口最终经 `tc_blit` 管线（depth_stencil=None）在**同一 egui
+                // 渲染通道**里把离屏 3D 结果贴到屏上；egui 自身的 2D UI 是平面的，本就不需要深度。
+                // 若 egui 通道带 depth-stencil 附件而 tc_blit 不带，GL 后端在 Queue::submit 会报
+                // "Render pipeline targets are incompatible with render pass / Incompatible
+                // depth-stencil attachment format"，整帧（含 2D UI）提交失败→整窗黑屏。故本通道
+                // 不声明深度，让 tc_blit 与之匹配。3D 离屏渲染（mesh/gbuffer/bloom 等）各用自带
+                // 深度的独立通道，不受此影响。
+                depth_stencil_format: None,
                 ..Default::default()
             },
         )));
@@ -314,22 +322,14 @@ impl GpuRender {
                     store: wgpu::StoreOp::Store,
                 },
             })];
+            // egui 通道不带 depth-stencil 附件：tc_blit（depth_stencil=None）在同通道内贴 3D 离屏
+            // 结果，若通道带深度而 tc_blit 不带，GL 后端 submit 报 "incompatible ... depth-stencil
+            // attachment" 使整帧（含 2D UI）失败。3D 离屏渲染各用自带深度的独立通道，此处不需要。
+            let _ = depth_view;
             let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("TextureCraft UI"),
                 color_attachments: &attachments,
-                depth_stencil_attachment: depth_view.map(|view| {
-                    wgpu::RenderPassDepthStencilAttachment {
-                        view,
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(far_depth()),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                        stencil_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(0),
-                            store: wgpu::StoreOp::Store,
-                        }),
-                    }
-                }),
+                depth_stencil_attachment: None,
                 ..Default::default()
             });
             renderer.render(&mut pass.forget_lifetime(), &jobs, &screen);
